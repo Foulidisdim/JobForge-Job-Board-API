@@ -88,7 +88,7 @@ spring:
 ```bash
 ./mvnw spring-boot:run
 ```
-- **Using IntelliJ IDEA: Open the project and run the `JobboardApplication.java` file.**
+- **Using IntelliJ IDEA: Open the project and run the `JobForgeApplication.java` file.**
 The API will start on http://localhost:8080.
 
 ## License
