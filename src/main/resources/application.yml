@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: JobForge
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/jobboard
+    username: jobforge_user
+    password: Jobforge123!
+  jpa:
+    hibernate:
+      ddl-auto: create # automatically creates tables from JPA and the @Entity classes representing my tables
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+job:
+  repost:
+    cooldown-days: 7
