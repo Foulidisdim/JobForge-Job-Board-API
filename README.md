@@ -1,4 +1,4 @@
-# 🚀 JobForge RESTful API: A Scalable Job Board RESTful API
+# 🚀 JobForge API: A Scalable Job Board RESTful API
 
 ## Overview
 This personal practice project is a robust, profesionally-architected backend engineered using **Spring Boot 3.5.5** and **Java** to power a full-featured job board application.  
