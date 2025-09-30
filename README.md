@@ -1,32 +1,42 @@
-# 🚀 JobForge RESTful API: A Scalable Job Board Backend
+# 🚀 JobForge RESTful API: A Scalable Job Board RESTful API
 
 ## Overview
-This project is a robust, cleanly-architected RESTful API backend engineered using **Spring Boot 3.5.5** and **Java** to power a full-featured job board application.  
-It is built with a focus on **security**, **data integrity**, and **maintainability**, making it suitable for high-load, production environments.
+This personal practice project is a robust, profesionally-architected backend engineered using **Spring Boot 3.5.5** and **Java** to power a full-featured job board application.  
 
-The architecture prioritizes industry best practices, including token-based authentication, role-based access control, and advanced transactional data handling.
+It is built with a focus on the **security**, **data integrity**, and **maintainability** required for professional, production environments.
+
+The architecture prioritizes industry best practices, including role-based access control, actor authorization and advanced transactional data handling.
 
 ---
 
 ## ✨ Key Architectural Features
-This project showcases expertise in high-quality backend development and data management:
+This project showcases expertise in robust backend development, relational data management & integrity as well as business rule driven design, all with security in mind:
 
 ### 🛡️ Security & Authorization
-- **Token-Based Authentication (JWT):** Designed and structured the complete security workflow using JSON Web Tokens (JWT) for secure user session management and validation. *(In progress)*
-- **Role-Based Access Control (RBAC):** Established a granular `AuthorizationService` to govern access based on defined user roles (e.g., ADMIN, EMPLOYER, CANDIDATE).
-- **Declarative Authorization:** Strategy to utilize Spring Security's `@PreAuthorize` annotations on the service layer to enforce authorization rules. *(In progress)*
+- **Token-Based Authentication (JWT):** Design and structure ready on all services and security workflows to implement JSON Web Tokens (JWT) for safe user session management and validation. *(In progress)*
+- **Password hashing**: Featuring BCrypt for encrypted storage.
+- **Role-Based Access Control (RBAC):** Established a centralized `AuthorizationService` to govern access based on defined user roles (e.g., ADMIN, EMPLOYER, CANDIDATE) and business logic.
+- **Declarative Authorization:** Strategic groundwork to further streamline the authorization rules and their enforcement using Spring Security's declarative `@PreAuthorize` annotations on the service layer. *(In progress)*
 
 ### 💾 Data Integrity & Persistence
-- **Transactional Atomicity:** Leveraged Spring's `@Transactional` to ensure multi-step database operations are atomic, guaranteeing data consistency.
+- **Transactional Atomicity:** Used Spring's `@Transactional` to ensure multi-step database operations are executed as a single unit, rolling back if any operation fails, guaranteeing data consistency.
+- **Resource Mapping (MapStruct) & Data Transfer Objects:** Clean, fast, and type-safe mapping between JPA Entities and DTOs, **separating the internal domain model from the API contracts**.
 - **JPA Dirty Checking:** Optimized database writes using JPA's automatic change detection and commit efficiency.
-- **Soft Deletion:** Implemented `isDeleted` flags for core entities (Users, Jobs, Companies) to ensure auditability, relational integrity, and account/data recovery.
+- **Soft Deletion:** Implemented `isDeleted` flags for core entities (Users, Jobs, Companies) to ensure auditability, relational integrity, account/data recovery and privacy law compliance.
+- **Data Validation:** Enforced domain-specific rules (e.g., enums, currency) at the API layer with **custom annotations** `@EnumSubset` & `@ValidCurrency`, as well as SpringBoot's standard annotations like `@NotBlank`, `@Email` & `@CreatedDate` to ensure data integrity and consistent input.
+
+### 🛠️ Error Handling
+- **Global Exception Handler:** All exceptions are handled in a single place using `@ControllerAdvice`, ensuring uniform responses.
+- **Custom Exceptions:** Domain-specific exceptions (e.g., `JobNotFoundException`, `UnauthorizedAccessException`) are defined to reflect meaningful business logic errors.
+- **Standardized Error Response:** Clients receive a JSON response with the following fields:
+  - `status`: HTTP status code
+  - `message`: Detailed, customizable explanation
+  - `timestamp`: The date and time of the error
 
 ### 💻 Core Business Functionality
-- **User Management:** Secure creation and management of User Profiles (Candidates and Employers).
-- **Resource Mapping (MapStruct):** Clean, fast, and type-safe mapping between JPA Entities and DTOs, separating the internal domain model from the API contracts.
-- **Search & Pagination (Planned):** Endpoints will support Spring Data `Pageable` for scalable data retrieval, filtering, and sorting (e.g., searching jobs by title, location, or salary range).
-
----
+- **Refined Data Management:** Secure creation and updates of User Profiles, Job postings and Company profiles. Candidates, Employers and Recruiters each have their own access rights.
+- **Workflow states**: Implemented lifecycle management for Jobs, Candidates, and Companies (e.g., draft → active → closed), enforcing smooth and robust state transitions.
+- **Search & Pagination:** Endpoints are architected to get further streamlined leveraging Spring Data's `Pageable` for scalable data retrieval, filtering, and sorting (e.g., searching jobs by title, location, or salary range).
 
 ## 🛠️ Technology Stack
 
