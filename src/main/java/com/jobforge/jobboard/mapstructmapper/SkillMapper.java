@@ -20,5 +20,6 @@ public interface SkillMapper {
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true) // never update the id
+    @Mapping(target = "jobs", ignore = true)
     void updateSkillFromDto(SkillUpdateDto dto, @MappingTarget Skill skill);
 }

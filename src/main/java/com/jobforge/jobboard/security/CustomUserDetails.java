@@ -1,0 +1,88 @@
+package com.jobforge.jobboard.security;
+
+import com.jobforge.jobboard.entity.Company;
+import com.jobforge.jobboard.entity.User;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+/**
+ * Custom implementation of Spring Security's UserDetails interface.
+
+ * Extend the standard UserDetails contract to include the user's
+ * immutable Database ID (Long id). This ID is essential for fast, in-memory
+ * authorization checks (e.g., using @PreAuthorize("#userId == principal.id"))
+ * without requiring redundant database lookups!
+ **/
+public class CustomUserDetails implements UserDetails {
+
+    // -- FIELDS --
+
+    //CUSTOM FIELDS
+    private final Long id;
+    private final Company company;
+
+    // The user's login identifier (email).
+    private final String email;
+
+    // The hashed password stored in the database.
+    private final String passwordHash;
+
+    // The user's roles and permissions (e.g., ROLE_ADMIN, ROLE_CANDIDATE).
+    private final Collection<? extends GrantedAuthority> authorities;
+
+    // --CONSTRUCTOR --
+    public CustomUserDetails(User user, Company company) {
+        // Initialize fields using the data from the Hibernate User entity.
+        this.id = user.getId();
+        this.email = user.getEmail();
+        this.passwordHash = user.getPasswordHash();
+        this.company = company; // TODO: Check if this works with my current transactional implementation or requires JOIN FETCH user+company in the User repo. Probably need to check the UserDetailsImpl that sends the company for this.
+
+        // Convert the User's Role Enum into a Collection of Spring Security authorities.
+        // Spring expects roles prefixed with "ROLE_" (e.g., ROLE_CANDIDATE)
+        this.authorities = List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name()));
+
+    }
+
+    // -- CUSTOM GETTERS FOR AUTHORIZATION --
+    ///Exposes the Database ID (Long) and the user's asocciated company for secure, in-memory authorization checks
+    public Long getId() {
+        return id;
+    }
+    public Company getCompany() {
+        return company;
+    }
+
+    // --- REQUIRED UserDetails IMPLEMENTATION --
+    @Override
+    public String getPassword() {
+        return passwordHash;
+    }
+
+    @Override
+    public String getUsername() {
+        return email;
+    }
+
+    ///Returns the user's roles. Used by Spring to enforce access rules (e.g., using @PreAuthorize("hasAuthority('ROLE_ADMIN')")).
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities;
+    }
+
+    // --- Account Status Methods (Often default to true unless specific status management is needed) ---
+    @Override
+    public boolean isAccountNonExpired() {return true;}
+    @Override
+    public boolean isAccountNonLocked() {return true;}
+    @Override
+    public boolean isCredentialsNonExpired() {return true;}
+
+    ///Prohibits soft deleted accounts from logging in. Not desirable because logging in to a soft deleted account is set to reactivate it. leave as default (return true).
+    @Override
+    public boolean isEnabled() {return true;}
+}

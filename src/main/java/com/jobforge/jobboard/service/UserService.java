@@ -9,7 +9,14 @@ import com.jobforge.jobboard.exception.InvalidPasswordException;
 import com.jobforge.jobboard.exception.ResourceNotFoundException;
 import com.jobforge.jobboard.mapstructmapper.UserMapper;
 import com.jobforge.jobboard.repository.UserRepository;
+import com.jobforge.jobboard.security.JwtResponseDto;
+import com.jobforge.jobboard.security.JwtService;
+import com.jobforge.jobboard.security.RefreshTokenService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,30 +28,37 @@ import java.util.List;
 public class UserService {
 
     // --Dependency injections--
-    private final UserRepository userRepository; //lombok requiredArgsConstructor plus this is the repository Dependency Injection
+    // The lombok requiredArgsConstructor annotation plus these effectively make the Dependency Injection.
+    private final UserRepository userRepository;
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
     private final AuthorizationService authorizationService;
+    private final AuthenticationManager authenticationManager;
+    private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     // TODO: Choose which data the admin will have administrative access in and implement the access. Also, Implement admin cleanups to also hard delete stuff (e.g. auto deletions after some days or immediate deletion of deactivated data functionality.
+
+    // TODO: See if i need to add @PreAuthorize("!principal.deleted") to only allow non-deleted users do certain actions (also have an UnauthorizedException thrown inside service that says accountDeactivated).
+    //  (prerequisite: add .claim("deleted", user.isDeleted()) in the JWT claims to include deleted flag.
 
     /// CREATE
     // Signup a new user.
     // @Transactional ensures that a series of database operations are executed as a single, atomic unit.
     // If any part of the operation fails, the entire transaction is rolled back!!
     @Transactional
-    public UserResponseDto signUp(UserRegistrationDto registrationDto) {
+    public JwtResponseDto signUp(UserRegistrationDto registrationDto) {
         // We need to handle soft deleted users (Say a deactivated account already exists with that email).
         String email = registrationDto.getEmail();
 
-        //1. Check active users
+        //1. Check if user with that email already exists.
         if (userRepository.findByEmailAndDeletedFalse(email).isPresent()) {
             throw new EmailAlreadyInUseException("Email already in use: " + registrationDto.getEmail());
         }
 
-        // 2. Check soft-deleted users
+        // 2. Check soft-deleted users.
         if (userRepository.findByEmailAndDeletedTrue(email).isPresent()) {
             // Instead of recovering, instruct the user to log in
             throw new EmailSoftDeletedException("An account with this email was previously deleted. Please log in to recover it, or continue signing up with a new account.");
@@ -62,21 +76,57 @@ public class UserService {
         // Hash the plain pass and set it to the user that will be saved in the DB.
         user.setPasswordHash(passwordEncoder.encode(registrationDto.getPassword()));
 
-        User saved = userRepository.save(user); // returns the user with the DB initialized fields like id
-        return userMapper.toDto(saved); //Use the Dto to strip the db initialized and password fields when responding to the frontEnd
+        User savedUser = userRepository.save(user); // returns the user with the DB initialized fields like id
+
+        // AUTO-LOGIN after successful registration: Generate and return the tokens.
+        String accessToken = jwtService.generateAccessToken(savedUser);
+        String refreshToken = refreshTokenService.createRefreshToken(savedUser).getToken();
+
+        // c. Return the dual token response
+        return JwtResponseDto.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .userId(savedUser.getId())
+                .userEmail(savedUser.getEmail())
+                .build();
     }
 
 
     /// GET
     // User login.
     @Transactional()
-    public UserResponseDto login(UserLoginDto loginDto) {
-        User user =  userRepository.findByEmail(loginDto.getEmail()).orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + loginDto.getEmail())); // In case the repo returns an optional object because the user wasn't found.
+    public JwtResponseDto login(UserLoginDto loginDto) {
+        // Authenticate Credentials
+        /**
+         * AuthenticationManager: Automatic UserDetailsServiceImpl and PasswordEncoder Dependencies!:
 
-        // Validate password (For authentication)
-        if(!passwordEncoder.matches(loginDto.getPassword(), user.getPasswordHash())){
-            throw new InvalidPasswordException("Invalid password");
-        }
+         * Spring Security automatically delegates the authentication request to the
+         * DaoAuthenticationProvider, which is automatically wired with:
+
+         * 1. UserDetailsService: (@Service UserDetailsServiceImpl I created)
+         * To load the UserDetails object (including the hashed password)
+         * from the db based on email.
+
+         * 2. PasswordEncoder: (@Bean PasswordEncoder where I configured with BCrypt in SecurityConfig)
+         * To securely compare the plain-text password from the request
+         * against the hashed password retrieved from the DB.
+
+         * For subsequent secured requests, the JwtAuthenticationFilter BYPASSES the AuthenticationManager,
+         * validates the token directly, and manually sets the user's authentication context in Sping Security Context.
+         **/
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(loginDto.getEmail(), loginDto.getPassword())
+        );
+
+        // Load the authenticated User entity from the DB using the authenticated user's details
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found after authentication.")); // Should not happen.
+
+        // Generate Tokens
+        String accessToken = jwtService.generateAccessToken(user);
+        // Create/Update Refresh Token (Deletes old token, saves new one)
+        String refreshToken = refreshTokenService.createRefreshToken(user).getToken();
 
         // If email and password match:
         //Auto-reactivate if the account was soft-deleted
@@ -84,7 +134,14 @@ public class UserService {
             user.setDeleted(false);
             userRepository.save(user);
         }
-        return userMapper.toDto(user);
+
+        // 5. Return Dual Token Response (Access+Refresh)
+        return JwtResponseDto.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .userId(user.getId())
+                .userEmail(user.getEmail())
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -118,6 +175,7 @@ public class UserService {
         return userMapper.toDto(user);
     }
 
+    // TODO: Delete the refresh token to initiate a login after password change.
     @Transactional
     public void updatePassword(Long userId, UserUpdatePasswordDto passwordDto, Long actorId) {
         // Only the user can update the password. Not even the admin.

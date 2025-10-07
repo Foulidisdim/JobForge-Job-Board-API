@@ -47,8 +47,7 @@ public class User {
     @Column(nullable = false)
     private boolean deleted = false;
 
-    // --Relationships--
-
+    /// --Relationships--
     // EMPLOYERS/RECRUITERS -> COMPANY
     // IN THE USERS TABLE, a foreign key column named company_id will hold
     // the id (primary key) for the company the user is CURRENTLY associated with.

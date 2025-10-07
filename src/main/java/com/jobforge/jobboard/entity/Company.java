@@ -49,7 +49,6 @@ public class Company {
 
 
     /// --Relationships--
-
     // COMPANY -> JOBS
     // mappedBy = "company" sets a foreign key ON THE JOB ENTITY that holds the COMPANY THAT POSTED THE JOB. Will specify that foreign key column name on the Job Entity
     // Look for @JoinColumn(name = "company_id").

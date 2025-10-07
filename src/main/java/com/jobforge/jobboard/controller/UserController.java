@@ -1,6 +1,7 @@
 package com.jobforge.jobboard.controller;
 
 import com.jobforge.jobboard.dto.*;
+import com.jobforge.jobboard.security.JwtResponseDto;
 import com.jobforge.jobboard.service.CompanyService;
 import com.jobforge.jobboard.service.UserService;
 import jakarta.validation.Valid;
@@ -24,16 +25,16 @@ public class UserController {
 
     /// CREATE
     @PostMapping("/signup")
-    public ResponseEntity<UserResponseDto> signUp (@Valid @RequestBody UserRegistrationDto registrationDto) {  //@Valid: validate the input as defined on the userCreateDto annotations
+    public ResponseEntity<JwtResponseDto> signUp (@Valid @RequestBody UserRegistrationDto registrationDto) {  //@Valid: validate the input as defined on the userCreateDto annotations
 
-        UserResponseDto userResponse = userService.signUp(registrationDto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(userResponse);
+        JwtResponseDto tokensResponse = userService.signUp(registrationDto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(tokensResponse);
     }
     @PostMapping("/login")
-    public ResponseEntity<UserResponseDto> login (@Valid @RequestBody UserLoginDto loginDto) {
+    public ResponseEntity<JwtResponseDto> login (@Valid @RequestBody UserLoginDto loginDto) {
 
-        UserResponseDto userResponse = userService.login(loginDto);
-        return ResponseEntity.ok(userResponse);
+        JwtResponseDto tokensResponse = userService.login(loginDto);
+        return ResponseEntity.ok(tokensResponse);
     }
 
 

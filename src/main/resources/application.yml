@@ -17,3 +17,9 @@ spring:
 job:
   repost:
     cooldown-days: 7
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:jobForge123!}
+    access-expiration-ms: 900000   # 15m (JWT token lifespan)
+    refresh-expiration-ms: 604800000 # 7d (refresh token lifespan)
