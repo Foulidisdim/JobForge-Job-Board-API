@@ -103,5 +103,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
         filterChain.doFilter(request, response);
 
     }
+
+    // ADDED THIS METHOD TO SKIP FILTERING ON PUBLIC PATHS (signup, login and refresh!)
+    @Override
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        // 1. Get the URI path being requested (e.g., /api/users/signup)
+        String path = request.getRequestURI();
+
+        // 2. Define the public path prefixes that should be ignored by the JWT filter
+        return path.startsWith("/api/users/signup") ||
+                path.startsWith("/api/users/login") ||
+                path.startsWith("/api/auth/refresh");
+    }
+
 }
 

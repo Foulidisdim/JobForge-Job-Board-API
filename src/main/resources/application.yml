@@ -20,6 +20,6 @@ job:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:jobForge123!}
+    secret: ${JWT_SECRET:QfT+pB+bT29qjRj0I6sF+vXw7L/sE4c2z1R8t1g5i7k=}
     access-expiration-ms: 900000   # 15m (JWT token lifespan)
     refresh-expiration-ms: 604800000 # 7d (refresh token lifespan)
