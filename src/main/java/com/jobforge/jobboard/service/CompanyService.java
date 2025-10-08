@@ -35,7 +35,7 @@ public class CompanyService {
 
     /// POST
     @Transactional
-    @PreAuthorize("!hasRole('EMPLOYER')") // Business Rule: A user cannot create a company if they are already an employer (check with no db hit!).
+    @PreAuthorize("!hasAnyRole('EMPLOYER', 'RECRUITER')") // Business Rule: A user cannot create a company if they are already associated with one (check with no db hit!).
     public CompanyResponseDto createCompany(CompanyCreationDto companyDto, CustomUserDetails principal/* Derived by the signed-in user from spring security*/ ) {
 
         // If business rule is valid, THEN do the required db search to update the user entity.

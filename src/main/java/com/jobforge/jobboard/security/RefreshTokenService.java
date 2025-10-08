@@ -24,7 +24,11 @@ public class RefreshTokenService {
     @Transactional
     public RefreshToken createRefreshToken(User user) {
         // Delete any old refresh tokens for this user (one active token per user is best practice)
-        refreshTokenRepository.findByUserId(user.getId()).ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.findByUserId(user.getId())
+                .ifPresent(token -> {
+                    refreshTokenRepository.delete(token);
+                    refreshTokenRepository.flush(); // Force delete to DB immediately
+                });
 
         // Build the (new) token
         RefreshToken refreshToken = RefreshToken.builder()
