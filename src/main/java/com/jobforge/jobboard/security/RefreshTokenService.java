@@ -36,14 +36,21 @@ public class RefreshTokenService {
         return refreshTokenRepository.save(refreshToken);
     }
 
-    // VALIDATION
+    // VALIDATION (verify not expired and account not soft deleted)
     @Transactional
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.getExpiryDate().isBefore(Instant.now())) {
-            // If expired, delete it from the DB and throw an error
+            // If expired, delete token from the DB and throw exception.
             refreshTokenRepository.delete(token);
             throw new ResourceNotFoundException("Refresh token was expired. Please make a new sign in request");
         }
+
+        if (token.getUser().isDeleted()) {
+            // If user account is soft-deleted, delete token from the DB and throw exception.
+            refreshTokenRepository.delete(token);
+            throw new SecurityException("Account is deactivated.");
+        }
+
         return token;
     }
 
@@ -51,5 +58,11 @@ public class RefreshTokenService {
     @Transactional(readOnly = true)
     public Optional<RefreshToken> findByToken(String token) {
         return refreshTokenRepository.findByToken(token);
+    }
+
+    // DELETION
+    @Transactional
+    public void deleteTokenByUserId(Long userId) {
+        refreshTokenRepository.findByUserId(userId).ifPresent(refreshTokenRepository::delete);
     }
 }

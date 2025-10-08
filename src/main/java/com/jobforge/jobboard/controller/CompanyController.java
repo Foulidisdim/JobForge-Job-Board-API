@@ -4,11 +4,13 @@ import com.jobforge.jobboard.dto.CompanyCreationDto;
 import com.jobforge.jobboard.dto.CompanyResponseDto;
 import com.jobforge.jobboard.dto.CompanyUpdateDto;
 import com.jobforge.jobboard.dto.UserResponseDto;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.service.CompanyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,27 +22,25 @@ public class CompanyController {
 
     private final CompanyService companyService;
 
-    // TODO: Change the temporary request params i use to test functionality with the JWT authentication principal after the implementation.
-
     /// CREATE
-    @PostMapping("/create")
-    public ResponseEntity<CompanyResponseDto> createCompany(@Valid @RequestBody CompanyCreationDto companyCreationDto, @RequestParam Long userId) {
-        CompanyResponseDto companyResponseDto = companyService.createCompany(companyCreationDto, userId);
+    @PostMapping()
+    public ResponseEntity<CompanyResponseDto> createCompany(@Valid @RequestBody CompanyCreationDto companyCreationDto, @AuthenticationPrincipal CustomUserDetails principal) {
+        CompanyResponseDto companyResponseDto = companyService.createCompany(companyCreationDto, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(companyResponseDto);
     }
 
 
     /// POST
-    @PostMapping("/{companyId}/appointRecruiter/{recruiterId}")
-    public ResponseEntity<UserResponseDto> appointRecruiter(@PathVariable Long companyId, @PathVariable Long recruiterId, @RequestParam Long actorId) {
+    @PostMapping("/myRecruiters/{recruiterId}")
+    public ResponseEntity<UserResponseDto> appointRecruiter(@PathVariable Long recruiterId, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        UserResponseDto responseDto = companyService.appointRecruiter(companyId, recruiterId, actorId);
+        UserResponseDto responseDto = companyService.appointRecruiter(recruiterId, principal);
         return ResponseEntity.ok(responseDto);  // HTTP 200 OK status with the newly updated user's DTO.
     }
 
 
     /// READ
-    @GetMapping("/all")
+    @GetMapping()
     public ResponseEntity<List<CompanyResponseDto>> getAllCompanies() {
         List<CompanyResponseDto> dtos =  companyService.getAllActiveCompanyResponseDtos();
         return ResponseEntity.status(HttpStatus.OK).body(dtos);
@@ -52,42 +52,41 @@ public class CompanyController {
         return ResponseEntity.ok(companyResponseDto);
     }
 
-    @GetMapping("/{id}/recruiters")
-    public ResponseEntity<List<UserResponseDto>> getRecruitersForCompany(@PathVariable Long id, @RequestParam Long actorId) {
+    @GetMapping("/myRecruiters")
+    public ResponseEntity<List<UserResponseDto>> getRecruitersForCompany(@AuthenticationPrincipal CustomUserDetails principal) {
 
-        List<UserResponseDto> recruiters = companyService.getActiveRecruitersForCompany(id, actorId);
+        List<UserResponseDto> recruiters = companyService.getActiveRecruitersForCompany(principal);
 
         return ResponseEntity.ok(recruiters);
     }
 
 
     /// UPDATE
-    @PutMapping("/{id}")
-    public ResponseEntity<CompanyResponseDto> updateCompany(@PathVariable Long id, @Valid  @RequestBody CompanyUpdateDto updateDto, @RequestParam Long actorId) {
-        CompanyResponseDto responseDto = companyService.updateCompany(updateDto, id, actorId);
+    @PutMapping()
+    public ResponseEntity<CompanyResponseDto> updateCompany(@Valid  @RequestBody CompanyUpdateDto updateDto, @AuthenticationPrincipal CustomUserDetails principal) {
+        CompanyResponseDto responseDto = companyService.updateCompany(updateDto, principal);
         return ResponseEntity.ok(responseDto);
     }
 
-    @PutMapping("/{companyId}/changeEmployer")
-    public ResponseEntity<CompanyResponseDto> changeCompanyEmployer(@PathVariable Long companyId, @RequestParam Long currentEmployerId,
-                                                                    @RequestParam Long newEmployerId) {
+    @PutMapping("/changeEmployer")
+    public ResponseEntity<CompanyResponseDto> changeCompanyEmployer(@RequestParam Long newEmployerId, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        CompanyResponseDto updatedCompany = companyService.changeCompanyEmployer(companyId, currentEmployerId, newEmployerId);
+        CompanyResponseDto updatedCompany = companyService.changeCompanyEmployer(newEmployerId, principal);
         return ResponseEntity.ok(updatedCompany);
     }
 
 
     /// DELETE
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCompany(@PathVariable Long id, @RequestParam Long actorId) {
-        companyService.deleteCompany(id, actorId);
+    @DeleteMapping()
+    public ResponseEntity<Void> deleteCompany(@AuthenticationPrincipal CustomUserDetails principal) {
+        companyService.deleteCompany(principal);
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{companyId}/removeRecruiter/{recruiterId}")
-    public ResponseEntity<UserResponseDto> removeRecruiter(@PathVariable Long companyId, @PathVariable Long recruiterId,  @RequestParam Long actorId) {
+    @DeleteMapping("/myRecruiters/{recruiterId}")
+    public ResponseEntity<UserResponseDto> removeRecruiter( @PathVariable Long recruiterId,  @AuthenticationPrincipal CustomUserDetails principal) {
 
-        UserResponseDto responseDto = companyService.removeRecruiter(companyId, recruiterId, actorId);
+        UserResponseDto responseDto = companyService.removeRecruiter(recruiterId, principal);
         return ResponseEntity.ok(responseDto);
     }
 }

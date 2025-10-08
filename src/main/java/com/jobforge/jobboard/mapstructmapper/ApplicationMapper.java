@@ -31,7 +31,7 @@ public interface ApplicationMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target ="resumeUrl", ignore = true)
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE) // Ignore any field that is null on the UpdateDTO to not lose any data!
-    void updateApplicationFromDto(ApplicationUpdateDto dto, @MappingTarget Application application); // "UPDATE the existing "application" entity you received as a parameter"
+    void updateApplicationFromDto(ApplicationUpdateDto dto, @MappingTarget Application application); // Essentially means: UPDATE the existing "application" entity you received as a parameter"
 
     // --MAPPING FROM ENTITY TO DTO (for response)--
     @Mapping(target = "job", source = "job") // From the Job field on the application entity that defines a Job entity, to a JobResponseDto object that is nested inside the ApplicationResponseDto.

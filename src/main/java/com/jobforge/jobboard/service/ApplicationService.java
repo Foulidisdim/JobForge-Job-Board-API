@@ -10,13 +10,17 @@ import com.jobforge.jobboard.enums.ApplicationStatus;
 import com.jobforge.jobboard.enums.JobStatus;
 import com.jobforge.jobboard.enums.Role;
 import com.jobforge.jobboard.exception.ResourceNotFoundException;
+import com.jobforge.jobboard.exception.UnauthorizedException;
 import com.jobforge.jobboard.mapstructmapper.ApplicationMapper;
 import com.jobforge.jobboard.repository.ApplicationRepository;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,18 +33,16 @@ public class ApplicationService {
 
     private final JobService jobService;
     private final UserService userService;
-    private final AuthorizationService authorizationService;
 
     // TODO: Implement a file upload system for the candidate's resume (as well asa the profile and company pics).
 
     /// POST
     @Transactional
-    public ApplicationResponseDto apply(ApplicationCreationDto applicationDto, Long userId) {
-        User candidate = userService.findActiveUserById(userId);
+    @PreAuthorize("hasRole('CANDIDATE')")
+    public ApplicationResponseDto apply(ApplicationCreationDto applicationDto, CustomUserDetails principal) {
+        User candidate = userService.findActiveUserById(principal.getId());
 
-        authorizationService.ensureRole(candidate, Role.CANDIDATE);
-
-        // Concurrency of events: Check if the job is still active (employer/recruiter could have CLOSED it the moment a candidate sent an Apply request, for example)
+        // Concurrency of events: Check if the job is still active (employer/recruiter could have CLOSED it, moments before the candidate sent an Apply request, for example)
         Job job = jobService.findNonDeletedJobById(applicationDto.getJobId());
         if (job.getStatus() != com.jobforge.jobboard.enums.JobStatus.ACTIVE) {
             throw new IllegalStateException("Cannot apply to an inactive job.");
@@ -66,13 +68,10 @@ public class ApplicationService {
     ///GET
     //Candidate-only method
     @Transactional(readOnly = true)
-    public List<ApplicationResponseDto> getApplicationsByCandidate(Long actorId) {
+    @PreAuthorize("hasRole('CANDIDATE')")
+    public List<ApplicationResponseDto> getApplicationsByCandidate(CustomUserDetails candidate) {
 
-        // Use service-to-service communication to find the user and authenticate.
-        User candidate = userService.findActiveUserById(actorId);
-        authorizationService.ensureRole(candidate, Role.CANDIDATE);
-
-        List<Application> applications = applicationRepository.findByCandidateId(actorId);
+        List<Application> applications = applicationRepository.findByCandidateId(candidate.getId());
         return applications.stream()
                 .map( application -> {
                     ApplicationResponseDto applicationResponseDto = applicationMapper.toDto(application);
@@ -82,16 +81,18 @@ public class ApplicationService {
                 .collect(Collectors.toList());
     }
 
+    // Only an employer or a recruiter from the job's company can view its applications.
     @Transactional(readOnly = true)
-    public List<ApplicationResponseDto> getApplicationsByJob(Long jobId, Long actorId) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public List<ApplicationResponseDto> getApplicationsByJob(Long jobId, CustomUserDetails principal) {
 
+        // Load job only once.
         Job job = jobService.findNonDeletedJobById(jobId);
-        User actingUser = userService.findActiveUserById(actorId);
 
-        // Authorization Check
-        // Only an employer or a recruiter can view applications for a job.
-        // Ensure the actor belongs to the same company as the job's associated one and has the EMPLOYER/RECRUITER role.
-        authorizationService.ensureCompanyRole(actingUser,job.getCompany(), Role.EMPLOYER, Role.RECRUITER);
+        // Manual authorization check. Did not check inside @PreAuthorize because we would need to hit the db for the job there too.
+        if (!Objects.equals(job.getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not allowed to view applications for this job.");
+        }
 
         List<Application> applications = applicationRepository.findByJob(job);
 
@@ -102,13 +103,13 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationResponseDto findById(Long id, Long actorId) {
+    public ApplicationResponseDto findById(Long id, CustomUserDetails principal) {
         Application application = applicationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found with ID: " + id));
 
-        //Authentication
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureApplicationAccess(actor, application);
+        //Authentication (complex, can't be on @PreAuthorize)
+        User user = userService.findActiveUserById(principal.getId());
+        ensureApplicationAccess(user, application);
 
         return applicationMapper.toDto(application);
     }
@@ -123,16 +124,18 @@ public class ApplicationService {
     /// UPDATE
     // Accept/Reject application or share feedback with the candidate (employers/recruiters method only)
     @Transactional
-    public ApplicationResponseDto updateApplication(Long applicationId, ApplicationUpdateDto updateDto, Long actorId) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public ApplicationResponseDto updateApplication(Long applicationId, ApplicationUpdateDto updateDto, CustomUserDetails principal) {
 
         Application application = findEntityById(applicationId);
-        User actor = userService.findActiveUserById(actorId);
-
-        // Only the Employer/Recruiter associated with the job posting's company can update status and notes of the applications!
-        authorizationService.ensureCompanyRole(actor, application.getJob().getCompany(), Role.EMPLOYER, Role.RECRUITER);
 
         if (application.getJob().getStatus() != JobStatus.ACTIVE) {
             throw new IllegalStateException("Cannot update applications for non-active jobs.");
+        }
+
+        // Manual authorization check. Did not check inside @PreAuthorize because we would need to hit the db for the application there too.
+        if (!Objects.equals(application.getJob().getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not allowed to view applications for this job.");
         }
 
         applicationMapper.updateApplicationFromDto(updateDto, application);
@@ -140,37 +143,42 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationResponseDto markUnderReview(Long applicationId, Long actorId) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public ApplicationResponseDto markUnderReview(Long applicationId, CustomUserDetails principal) {
         Application application = findEntityById(applicationId);
-        User actor = userService.findActiveUserById(actorId);
-
-
-        authorizationService.ensureCompanyRole(actor, application.getJob().getCompany(), Role.EMPLOYER, Role.RECRUITER);
 
         if (application.getStatus() != ApplicationStatus.APPLIED) {
             throw new IllegalStateException("Only applications of status " + ApplicationStatus.APPLIED + " can be marked as " + ApplicationStatus.UNDER_REVIEW + ".");
+        }
+
+        // Manual authorization check. Did not check inside @PreAuthorize because we would need to hit the db for the application there too.
+        if (!Objects.equals(application.getJob().getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not allowed to manage applications for this job.");
         }
 
         application.setStatus(ApplicationStatus.UNDER_REVIEW);
         return applicationMapper.toDto(application);
     }
 
-    // Not exactly a SOFT delete, as withdrawn applications will still be visible to
-    // both candidates and recruiters. More of a status change (Update).
+    // Not exactly a SOFT delete, as withdrawn applications will still be visible to both candidates and recruiters. More of a status change (Update).
     @Transactional
-    public ApplicationResponseDto withdrawApplication(Long applicationId, Long actorId) {
+    @PreAuthorize("hasRole('CANDIDATE')")
+    public ApplicationResponseDto withdrawApplication(Long applicationId, CustomUserDetails principal) {
+
+        // Load the application once
         Application application = findEntityById(applicationId);
 
-        // Only the candidate who submitted it can withdraw
-        authorizationService.ensureCandidateSelf(actorId, application.getCandidate().getId());
+        // Manual authorization: only the candidate who submitted it can withdraw
+        if (!Objects.equals(application.getCandidate().getId(), principal.getId())) {
+            throw new UnauthorizedException("You can only withdraw your own application.");
+        }
 
-        // Only pending applications (not accepted/rejected) can be withdrawn
-        switch(application.getStatus()) {
+        // Only pending applications(not accepted/rejected) can be withdrawn
+        switch (application.getStatus()) {
             case APPLIED, UNDER_REVIEW -> application.setStatus(ApplicationStatus.WITHDRAWN);
             case REJECTED, ACCEPTED -> throw new IllegalStateException("Cannot withdraw a finalized application.");
             case WITHDRAWN -> throw new IllegalStateException("Application already withdrawn.");
         }
-
 
         return applicationMapper.toDto(application);
     }
@@ -178,16 +186,40 @@ public class ApplicationService {
 
     ///HARD DELETE (Admin only)
     @Transactional
-    public void deleteApplication(Long applicationId, Long actorId) {
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureAdmin(actor);
+    @PreAuthorize("hasRole('ADMIN')")
+    public void deleteApplication(Long applicationId) {
 
         //No soft deletion concept for applications. Use findById normally. Deletion is just for moderation and cleanup purposes
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
 
-        // Applications have ID's that tie them to jobs and users. Deletion won't affect the job/user object.
-        // It's safe to perform a physical delete!
+        // Application entities have only ID's for the jobs and users they are tied to.
+        // Normal deletion won't affect these job/user object and is safe.
         applicationRepository.delete(application);
+    }
+
+
+
+    /// -- Helper Methods --
+    private void ensureApplicationAccess(User actor, Application application) {
+        // Case 1: The actor is an admin.
+        if (actor.getRole() == Role.ADMIN) {
+            return;
+        }
+
+        // Case 2: The actor is the candidate who owns the application.
+        if (Objects.equals(actor.getId(), application.getCandidate().getId())) {
+            return;
+        }
+
+        // Case 3: The actor is a recruiter or employer from the same company that owns the job.
+        if (actor.getRole() == Role.EMPLOYER || actor.getRole() == Role.RECRUITER) {
+            if (Objects.equals(actor.getCompany(), application.getJob().getCompany())) {
+                return;
+            }
+        }
+
+        // If none of the above conditions are met, throw an exception.
+        throw new UnauthorizedException("You do not have permission to view this application.");
     }
 }

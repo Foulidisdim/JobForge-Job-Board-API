@@ -1,6 +1,7 @@
 package com.jobforge.jobboard.controller;
 
 import com.jobforge.jobboard.dto.*;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.security.JwtResponseDto;
 import com.jobforge.jobboard.service.CompanyService;
 import com.jobforge.jobboard.service.UserService;
@@ -8,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -40,7 +42,7 @@ public class UserController {
 
     /// READ
     // Active users only
-    @GetMapping("/all")
+    @GetMapping()
     public ResponseEntity<List<UserResponseDto>> getAllActiveUsers() {
 
         List<UserResponseDto> userDtos = userService.findAllActiveUsers();
@@ -64,25 +66,25 @@ public class UserController {
 
     /// UPDATE
     // Active users only
-    @PutMapping("/{id}/details")
-    public ResponseEntity<UserResponseDto> updateActiveUser(@PathVariable Long id, @Valid @RequestBody UserUpdateDetailsDto detailsDto, @RequestParam Long actorId) {
+    @PutMapping()
+    public ResponseEntity<UserResponseDto> updateActiveUser(@Valid @RequestBody UserUpdateDetailsDto detailsDto, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        UserResponseDto updatedUser = userService.updateUserDetails(id,detailsDto, actorId);
+        UserResponseDto updatedUser = userService.updateUserDetails(detailsDto, principal);
         return ResponseEntity.ok(updatedUser);
 
     }
 
-    @PatchMapping("/{id}/password") // @PatchMapping declares it is a partial update
-    public ResponseEntity<Void> updatePassword(@PathVariable Long id, @Valid @RequestBody UserUpdatePasswordDto passwordDto, @RequestParam Long actorId) {
-        userService.updatePassword(id, passwordDto, actorId);
+    @PatchMapping("/changePassword") // @PatchMapping declares it is a partial update
+    public ResponseEntity<Void> updatePassword(@Valid @RequestBody UserUpdatePasswordDto passwordDto, @AuthenticationPrincipal CustomUserDetails principal) {
+        userService.updatePassword(passwordDto, principal);
         return ResponseEntity.noContent().build();
     }
 
 
     /// DELETE
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id, @RequestParam Long actorId) {
-        userService.deleteUser(id, actorId);
+    @DeleteMapping()
+    public ResponseEntity<Void> deleteUser(@AuthenticationPrincipal CustomUserDetails principal) {
+        userService.deleteUser(principal);
         return ResponseEntity.noContent().build();
     }
 }

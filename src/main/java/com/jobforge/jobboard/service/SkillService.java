@@ -5,12 +5,12 @@ import com.jobforge.jobboard.dto.SkillCreationDto;
 import com.jobforge.jobboard.dto.SkillResponseDto;
 import com.jobforge.jobboard.dto.SkillUpdateDto;
 import com.jobforge.jobboard.entity.Skill;
-import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.exception.DuplicateResourceException;
 import com.jobforge.jobboard.exception.ResourceNotFoundException;
 import com.jobforge.jobboard.mapstructmapper.SkillMapper;
 import com.jobforge.jobboard.repository.SkillRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,9 +24,6 @@ public class SkillService {
     private final SkillRepository skillRepository;
 
     private final SkillMapper skillMapper;
-
-    private final UserService userService;
-    private final AuthorizationService authorizationService;
 
     /// CREATE
     // Everyone can create skills (users will be able to put them on their profiles later)
@@ -73,10 +70,8 @@ public class SkillService {
 
     /// UPDATE
     @Transactional
-    public SkillResponseDto updateSkill(Long skillId, SkillUpdateDto dto, Long actorId) {
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureAdmin(actor);
-
+    @PreAuthorize("hasRole('ADMIN')")
+    public SkillResponseDto updateSkill(Long skillId, SkillUpdateDto dto) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new ResourceNotFoundException("Skill not found"));
 
@@ -88,10 +83,8 @@ public class SkillService {
 
     /// DELETE
     @Transactional
-    public void deleteSkill(Long id, Long actorId) {
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureAdmin(actor);
-
+    @PreAuthorize("hasRole('ADMIN')")
+    public void deleteSkill(Long id) {
         if (!skillRepository.existsById(id)) {
             throw new ResourceNotFoundException("Skill not found.");
         }

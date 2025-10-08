@@ -9,13 +9,15 @@ import com.jobforge.jobboard.entity.Skill;
 import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.enums.EnumSubset;
 import com.jobforge.jobboard.enums.JobStatus;
-import com.jobforge.jobboard.enums.Role;
 import com.jobforge.jobboard.exception.RepostLimitExceededException;
 import com.jobforge.jobboard.exception.ResourceNotFoundException;
+import com.jobforge.jobboard.exception.UnauthorizedException;
 import com.jobforge.jobboard.mapstructmapper.JobMapper;
 import com.jobforge.jobboard.repository.JobRepository;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,30 +37,26 @@ public class JobService {
 
     private final SkillService skillService;
     private final UserService userService;
-    private final AuthorizationService  authorizationService;
 
     /// CREATE
     //Creates a new job posting from a DTO.
     // The `status` will be set by the client (DRAFT or ACTIVE only).
     @Transactional
-    public JobResponseDto createJob(Long actorId, JobCreationDto creationDto) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto createJob(JobCreationDto creationDto, CustomUserDetails principal) {
 
         if (creationDto.getSalaryMin() > creationDto.getSalaryMax()) {
             throw new IllegalArgumentException("Maximum salary must be greater than or equal to minimum salary.");
         }
 
-        User creator = userService.findActiveUserById(actorId);
-
-        // Authorization Check: Must be recruiter or employer.
-        authorizationService.ensureRole(creator, Role.EMPLOYER, Role.RECRUITER);
-
-        Company company = creator.getCompany();
+        Company company = principal.getCompany();
         Job job = jobMapper.toEntity(creationDto);
 
         //Trim possible title start and end space chars
         job.setTitle(job.getTitle().trim());
 
         // Manual mapping for createdBy as it's not in the DTO
+        User creator = userService.findActiveUserById(principal.getId());
         job.setCreatedBy(creator);
         //Manual addition of the Company object to the job object based on the ID.
         job.setCompany(company);
@@ -81,13 +80,14 @@ public class JobService {
     private int repostCooldownDays; //Used to define the repost days constraint
     // Must only apply on active jobs.
     @Transactional
-    public JobResponseDto repostJob(Long jobId, Long actorId) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto repostJob(Long jobId, CustomUserDetails principal) {
         Job job = findNonDeletedJobById(jobId);
 
-        // Authorization: only the employer and the recruiters of the company.
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureCompanyRole(actor, job.getCompany(), Role.EMPLOYER, Role.RECRUITER);
-
+        // Ensure employer/recruiter belongs ot the job's company.
+        if (!Objects.equals(job.getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not authorized to duplicate jobs for this company.");
+        }
 
         // Only active jobs can be reposted
         if (job.getStatus() != JobStatus.ACTIVE) {
@@ -110,20 +110,22 @@ public class JobService {
     }
 
     @Transactional
-    public JobResponseDto duplicateClosedJob(Long jobId, Long actorId,
-                                             @EnumSubset(enumClass = JobStatus.class, anyOf = { "DRAFT", "ACTIVE" }) JobStatus status) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto duplicateClosedJob(Long jobId, @EnumSubset(enumClass = JobStatus.class, anyOf = { "DRAFT", "ACTIVE" }) JobStatus status, CustomUserDetails principal) {
 
         Job originalJob = findNonDeletedJobById(jobId);
 
-        // Authorization: only the employer and the recruiters of the company.
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureCompanyRole(actor, originalJob.getCompany(), Role.EMPLOYER, Role.RECRUITER);
+        // Ensure employer/recruiter belongs ot the job's company.
+        if (!Objects.equals(originalJob.getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not authorized to duplicate jobs for this company.");
+        }
 
         // Only allow duplication of "CLOSED" jobs (jobs withdrawn from the company itself)
         if (originalJob.getStatus() != JobStatus.CLOSED) {
             throw new IllegalStateException("Only closed jobs can be duplicated.");
         }
 
+        User actor = userService.findActiveUserById(principal.getId());
         Job duplicateJob = copyJobFields(actor,originalJob,status);
 
         Job savedDuplicate = jobRepository.save(duplicateJob);
@@ -134,15 +136,18 @@ public class JobService {
     /// UPDATE
     // Updates an existing job posting.
     @Transactional
-    public JobResponseDto updateJob(Long jobId, JobUpdateDto updateDto, Long actorId) {
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto updateJob(Long jobId, JobUpdateDto updateDto, CustomUserDetails principal) {
         if (updateDto.getSalaryMin() > updateDto.getSalaryMax()) {
             throw new IllegalArgumentException("Maximum salary must be greater than or equal to minimum salary.");
         }
 
         Job job = findNonDeletedJobById(jobId);
-        User actor = userService.findActiveUserById(actorId);
-        // Authorization: only the employer and the recruiters of the company can update the job.
-        authorizationService.ensureCompanyRole(actor, job.getCompany(), Role.EMPLOYER, Role.RECRUITER);
+
+        // Ensure employer/recruiter belongs ot the job's company.
+        if (!Objects.equals(job.getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not authorized to duplicate jobs for this company.");
+        }
 
         //Trim possible title start and end space chars
         job.setTitle(updateDto.getTitle().trim());
@@ -166,12 +171,13 @@ public class JobService {
     // We soft-delete the job posting by setting the status as "DELETED".
     // Keep the file for historical reasons.
     @Transactional
-    public void deleteJob(Long jobId, Long  actorId) {
+    public void deleteJob(Long jobId, CustomUserDetails principal) {
         Job job = findNonDeletedJobById(jobId);
 
-        // Authorization: only the employer and the recruiters of the company.
-        User actor = userService.findActiveUserById(actorId);
-        authorizationService.ensureCompanyRole(actor, job.getCompany(), Role.EMPLOYER, Role.RECRUITER);
+        // Ensure employer/recruiter belongs ot the job's company.
+        if (!Objects.equals(job.getCompany().getId(), principal.getCompany().getId())) {
+            throw new UnauthorizedException("You are not authorized to duplicate jobs for this company.");
+        }
 
         job.setStatus(JobStatus.DELETED); // JPA dirty checking will handle the save!
     }
@@ -187,12 +193,11 @@ public class JobService {
 
     // Company use only. VALIDATE so deleted jobs don't show up to the employers/candidates.
     @Transactional(readOnly = true)
-    public List<JobResponseDto> findCompanyJobsByStatus(Long actorId, @EnumSubset(enumClass = JobStatus.class, anyOf = {"ACTIVE", "DRAFT", "CLOSED"}) JobStatus status) {
-        User user = userService.findActiveUserById(actorId);
-        authorizationService.ensureRole(user, Role.EMPLOYER, Role.RECRUITER);
+    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    public List<JobResponseDto> findCompanyJobsByStatus(@EnumSubset(enumClass = JobStatus.class, anyOf = {"ACTIVE", "DRAFT", "CLOSED"}) JobStatus status,  CustomUserDetails principal) {
 
         // Find ONLY the jobs associated with their current company
-        List<Job> jobs = jobRepository.findAllByCompanyAndStatus(user.getCompany(), status);
+        List<Job> jobs = jobRepository.findAllByCompanyAndStatus(principal.getCompany(), status);
         return jobs.stream().map(jobMapper::toDto).collect(Collectors.toList());
     }
 

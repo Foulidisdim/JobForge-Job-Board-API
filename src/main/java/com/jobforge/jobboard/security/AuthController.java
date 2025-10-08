@@ -26,7 +26,7 @@ public class AuthController {
 
         // Find, Validate Expiration, and Generate New Access Token
         String newAccessToken = refreshTokenService.findByToken(refreshToken) // Handles not found exceptions implicitly after the maps that happen if the token is found.
-                .map(refreshTokenService::verifyExpiration) // If expired, throws ResourceNotFoundException
+                .map(refreshTokenService::verifyExpiration) // Throw necessary Exception if expired or the user account is soft-deleted.
                 .map(RefreshToken::getUser)                 // Get the User associated with the valid token
                 .map(jwtService::generateAccessToken)       // Generate a new Access Token for that specified user
                 .orElseThrow(() -> new ResourceNotFoundException("Refresh token is not in database!")); // If refresh token not found or invalid

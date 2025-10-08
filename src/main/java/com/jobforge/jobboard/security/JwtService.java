@@ -15,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.time.Instant;
 import java.util.Date;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -37,9 +36,13 @@ public class JwtService {
 
         return Jwts.builder()
                 .setSubject(user.getEmail()) // "Subject" is the user's login identifier (email)
-                    .claim("uid", user.getId())  // Apart from subject, issuedAt and Expiration claims,
-                                                    // ALSO Embed the user's DB UNIQUE IDENTIFIER (id)
-                                                    // directly into the token payload so that the API services can fetch user info without a DB lookup!
+
+                    // Apart from subject, issuedAt and Expiration claims,
+                    // ALSO Embed the user's DB UNIQUE IDENTIFIER (id)
+                    // directly into the token payload so that the API services can fetch user info without a DB lookup!
+                    .claim("uid", user.getId())
+                    .claim("deleted",user.isDeleted())
+
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256) // Signs token header and payload to ensure authenticity.// Uses the secret key from the environment variable (if present) or the specified key in application.yml.
@@ -74,13 +77,7 @@ public class JwtService {
         return parseClaims(token).getSubject();
     }
 
-    public Optional<Long> extractUserId(String token) {
-        try {
-            Claims claims = parseClaims(token);
-            //Optional in case of parsing failure, for example.
-            return Optional.ofNullable(claims.get("uid", Number.class)).map(Number::longValue); // The id (and ANY claim that's a number to be exact) is saved as a more general Number type inside the JSON token. Convert to long.
-        } catch (JwtException e) {
-            return Optional.empty();
-        }
+    public boolean extractIsDeletedUserStatus(String token) {
+        return parseClaims(token).get("deleted", Boolean.class);
     }
 }

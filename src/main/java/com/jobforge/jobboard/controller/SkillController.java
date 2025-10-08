@@ -43,18 +43,17 @@ public class SkillController {
 
     /// UPDATE
     @PutMapping("/{id}")
-    public ResponseEntity<SkillResponseDto> updateSkill(@PathVariable("id") Long skillId, @Valid @RequestBody SkillUpdateDto skillUpdateDto,
-                                             @RequestParam Long actorId) {
+    public ResponseEntity<SkillResponseDto> updateSkill(@PathVariable("id") Long skillId, @Valid @RequestBody SkillUpdateDto skillUpdateDto) {
 
-        SkillResponseDto responseDto = skillService.updateSkill(skillId, skillUpdateDto, actorId);
+        SkillResponseDto responseDto = skillService.updateSkill(skillId, skillUpdateDto);
         return ResponseEntity.ok(responseDto);
     }
 
 
     /// DELETE
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSkill(@PathVariable Long id, @RequestParam Long actorId) {
-        skillService.deleteSkill(id, actorId);
+    public ResponseEntity<Void> deleteSkill(@PathVariable Long id) {
+        skillService.deleteSkill(id);
         return ResponseEntity.noContent().build();
     }
 }

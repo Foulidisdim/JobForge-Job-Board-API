@@ -2,6 +2,7 @@ package com.jobforge.jobboard.security;
 
 import com.jobforge.jobboard.entity.Company;
 import com.jobforge.jobboard.entity.User;
+import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -19,11 +20,15 @@ import java.util.List;
  **/
 public class CustomUserDetails implements UserDetails {
 
-    // -- FIELDS --
-
     //CUSTOM FIELDS
+    /// -- GETTER -- Exposes the Database ID(Long) for secure, in-memory authorization checks
+    @Getter
     private final Long id;
+    /// -- GETTER -- Exposes the user's associated company for secure, in-memory authorization checks
+    @Getter
     private final Company company;
+
+    // -- STANDARD CONTRACT FIELDS --
 
     // The user's login identifier (email).
     private final String email;
@@ -49,13 +54,6 @@ public class CustomUserDetails implements UserDetails {
     }
 
     // -- CUSTOM GETTERS FOR AUTHORIZATION --
-    ///Exposes the Database ID (Long) and the user's asocciated company for secure, in-memory authorization checks
-    public Long getId() {
-        return id;
-    }
-    public Company getCompany() {
-        return company;
-    }
 
     // --- REQUIRED UserDetails IMPLEMENTATION --
     @Override

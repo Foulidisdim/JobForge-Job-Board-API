@@ -61,6 +61,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
             // Check if the token is valid (not expired, signature matches, etc.)
             if (jwtService.isTokenValid(jwt, userDetails)) {
 
+                /// EDGE CASE CHECK: User account deleted but tokens still active! REFUSE API ACCESS TILL ACCOUNT RECOVERY!
+                boolean isDeleted = jwtService.extractIsDeletedUserStatus(jwt);
+                if (isDeleted) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("Account is deactivated. Access denied.");
+                    response.flushBuffer(); // Exit authentication. Don't pass down to the filter chain!
+                    return;
+                }
+
                 // 5. Create Authentication Token
                 // If valid, create an authentication object for Spring Security
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
@@ -68,8 +77,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
                         userDetails,
                         null, //// Credentials null because the JWT ITSELF IS THE CREDENTIAL! No password is needed. We've validated the token, not a password.
                         userDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
-                        ///Once the user is authenticated, Spring Security uses these authorities to decide
-                        ///endpoint or method access (DONE USING CONTROLLER ANNOTATIONS LIKE @PreAuthorize("hasRole('ADMIN')")
+                        /// Once the user is authenticated, Spring Security uses these authorities to
+                        /// manage access (E.g, with @PreAuthorize("hasRole('ADMIN')")
                 );
 
                 // Set authentication details (remote IP, session ID, etc.)

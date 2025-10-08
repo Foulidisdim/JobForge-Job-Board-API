@@ -5,12 +5,14 @@ import com.jobforge.jobboard.dto.JobCreationDto;
 import com.jobforge.jobboard.dto.JobResponseDto;
 import com.jobforge.jobboard.dto.JobUpdateDto;
 import com.jobforge.jobboard.enums.JobStatus;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.service.ApplicationService;
 import com.jobforge.jobboard.service.JobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,32 +26,32 @@ public class JobController {
     private final ApplicationService applicationService;
 
     /// CREATE
-    @PostMapping("/create")
-    public ResponseEntity<JobResponseDto> createJob(@RequestParam Long userId, @Valid @RequestBody JobCreationDto jobDto) {
+    @PostMapping()
+    public ResponseEntity<JobResponseDto> createJob(@Valid @RequestBody JobCreationDto jobDto, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        JobResponseDto job = jobService.createJob(userId, jobDto);
+        JobResponseDto job = jobService.createJob(jobDto, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(job);
     }
 
-    @PostMapping("/{id}/duplicate") //CLOSED jobs only
+    @PostMapping("/{id}/duplicateAs") //CLOSED jobs only
     public ResponseEntity<JobResponseDto> duplicateClosedJob(
             @PathVariable Long id,
-            @RequestParam Long actorId,
-            @RequestParam JobStatus status // You can convert this to JobStatus in the service
+            @RequestParam JobStatus status,
+            @AuthenticationPrincipal CustomUserDetails principal
     ) {
-        JobResponseDto duplicatedJob = jobService.duplicateClosedJob(id, actorId, status);
+        JobResponseDto duplicatedJob = jobService.duplicateClosedJob(id, status, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(duplicatedJob);
     }
 
     @PostMapping("/{id}/repost") //ACTIVE jobs only.
-    public ResponseEntity<JobResponseDto> repostJob(@PathVariable Long id, @RequestParam Long actorId) {
-        JobResponseDto repostedJob = jobService.repostJob(id, actorId);
+    public ResponseEntity<JobResponseDto> repostJob(@PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
+        JobResponseDto repostedJob = jobService.repostJob(id, principal);
         return ResponseEntity.ok(repostedJob);
     }
 
 
     /// READ
-    @GetMapping("/all")
+    @GetMapping()
     public ResponseEntity<List<JobResponseDto>> getAllActiveJobs() {
 
         List<JobResponseDto> responseDtos = jobService.findAllActiveJobs();
@@ -57,9 +59,9 @@ public class JobController {
     }
 
     @GetMapping("/companyJobs")
-    public ResponseEntity<List<JobResponseDto>> getCompanyJobsByStatus(@RequestParam Long userId, @RequestParam JobStatus status) {
+    public ResponseEntity<List<JobResponseDto>> getCompanyJobsByStatus(@RequestParam JobStatus status, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        List<JobResponseDto> responseDtos = jobService.findCompanyJobsByStatus(userId, status);
+        List<JobResponseDto> responseDtos = jobService.findCompanyJobsByStatus(status, principal);
         return ResponseEntity.status(HttpStatus.OK).body(responseDtos);
     }
 
@@ -72,27 +74,27 @@ public class JobController {
 
     // Requests for a specific job's applications.
     @GetMapping("/{jobId}/applications")
-    public ResponseEntity<List<ApplicationResponseDto>> getApplicationsByJob(@PathVariable Long jobId, @RequestParam Long actorId) {
+    public ResponseEntity<List<ApplicationResponseDto>> getApplicationsByJob(@PathVariable Long jobId, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        List<ApplicationResponseDto> applications = applicationService.getApplicationsByJob(jobId, actorId);
+        List<ApplicationResponseDto> applications = applicationService.getApplicationsByJob(jobId, principal);
         return ResponseEntity.ok(applications);
     }
 
 
     /// UPDATE
-    @PutMapping("/{id}/update")
-    public ResponseEntity<JobResponseDto> updateJob(@PathVariable("id") Long jobId, @Valid @RequestBody JobUpdateDto jobUpdateDto, @RequestParam Long actorId) {
+    @PutMapping("/{id}")
+    public ResponseEntity<JobResponseDto> updateJob(@PathVariable("id") Long jobId, @Valid @RequestBody JobUpdateDto jobUpdateDto, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        JobResponseDto updatedJob = jobService.updateJob(jobId,jobUpdateDto,actorId);
+        JobResponseDto updatedJob = jobService.updateJob(jobId,jobUpdateDto, principal);
         return ResponseEntity.ok(updatedJob);
     }
 
 
     /// DELETE
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteJob(@PathVariable Long id, @RequestParam Long actorId) {
+    public ResponseEntity<Void> deleteJob(@PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        jobService.deleteJob(id, actorId);
+        jobService.deleteJob(id, principal);
         return ResponseEntity.noContent().build();
     }
 }

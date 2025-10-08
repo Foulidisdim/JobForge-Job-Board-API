@@ -9,6 +9,7 @@ import com.jobforge.jobboard.exception.InvalidPasswordException;
 import com.jobforge.jobboard.exception.ResourceNotFoundException;
 import com.jobforge.jobboard.mapstructmapper.UserMapper;
 import com.jobforge.jobboard.repository.UserRepository;
+import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.security.JwtResponseDto;
 import com.jobforge.jobboard.security.JwtService;
 import com.jobforge.jobboard.security.RefreshTokenService;
@@ -34,15 +35,16 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
-    private final AuthorizationService authorizationService;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
 
-    // TODO: Choose which data the admin will have administrative access in and implement the access. Also, Implement admin cleanups to also hard delete stuff (e.g. auto deletions after some days or immediate deletion of deactivated data functionality.
+    // TODO: Choose which data the admin will have administrative access in (e.g update or delete other user's data) and implement the access. Also, Implement admin cleanups to also hard delete stuff (e.g. auto deletions after some days or immediate deletion of deactivated data functionality.
 
-    // TODO: See if i need to add @PreAuthorize("!principal.deleted") to only allow non-deleted users do certain actions (also have an UnauthorizedException thrown inside service that says accountDeactivated).
-    //  (prerequisite: add .claim("deleted", user.isDeleted()) in the JWT claims to include deleted flag.
+    /// BY DESIGN (in ALL services):
+    /// In SecurityConfig: signUp, login and the /auth/refresh token refresh endpoints are publicly exposed. All other exposed functionalities NEED an authenticated user.
+    /// IF NO @PreAuthorize CONSTRAINTS ARE IN PLACE: Service methods receive the authenticated principal from the controllers, meaning that a USER can ONLY CHANGE THEIR OWN DETAILS!
+
 
     /// CREATE
     // Signup a new user.
@@ -82,7 +84,7 @@ public class UserService {
         String accessToken = jwtService.generateAccessToken(savedUser);
         String refreshToken = refreshTokenService.createRefreshToken(savedUser).getToken();
 
-        // c. Return the dual token response
+        // 5. Return the dual token response (Access+Refresh)
         return JwtResponseDto.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -97,23 +99,23 @@ public class UserService {
     @Transactional()
     public JwtResponseDto login(UserLoginDto loginDto) {
         // Authenticate Credentials
-        /**
-         * AuthenticationManager: Automatic UserDetailsServiceImpl and PasswordEncoder Dependencies!:
 
-         * Spring Security automatically delegates the authentication request to the
-         * DaoAuthenticationProvider, which is automatically wired with:
+        /// AuthenticationManager: Automatic UserDetailsServiceImpl and PasswordEncoder Dependencies!:
+        /*
+          Spring Security automatically delegates the authentication request to the
+          DaoAuthenticationProvider, which is automatically wired with:
 
-         * 1. UserDetailsService: (@Service UserDetailsServiceImpl I created)
-         * To load the UserDetails object (including the hashed password)
-         * from the db based on email.
+          1. UserDetailsService: (@Service UserDetailsServiceImpl I created)
+          To load the UserDetails object (including the hashed password)
+          from the db based on email.
 
-         * 2. PasswordEncoder: (@Bean PasswordEncoder where I configured with BCrypt in SecurityConfig)
-         * To securely compare the plain-text password from the request
-         * against the hashed password retrieved from the DB.
+          2. PasswordEncoder: (@Bean PasswordEncoder where I configured with BCrypt in SecurityConfig)
+          To securely compare the plain-text password from the request
+          against the hashed password retrieved from the DB.
 
-         * For subsequent secured requests, the JwtAuthenticationFilter BYPASSES the AuthenticationManager,
-         * validates the token directly, and manually sets the user's authentication context in Sping Security Context.
-         **/
+          For subsequent secured requests, the JwtAuthenticationFilter BYPASSES the AuthenticationManager,
+          validates the token directly, and manually sets the user's authentication context in Sping Security Context.
+        */
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginDto.getEmail(), loginDto.getPassword())
         );
@@ -135,7 +137,7 @@ public class UserService {
             userRepository.save(user);
         }
 
-        // 5. Return Dual Token Response (Access+Refresh)
+        // Return Dual Token Response (Access+Refresh)
         return JwtResponseDto.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -161,11 +163,11 @@ public class UserService {
 
     /// UPDATE
     @Transactional
-    public UserResponseDto updateUserDetails(Long userId, UserUpdateDetailsDto detailsDto, Long actorId) {
-        User actor = findActiveUserById(actorId);
-        authorizationService.ensureSelfOrAdmin(actor, userId);
+    public UserResponseDto updateUserDetails(UserUpdateDetailsDto detailsDto, CustomUserDetails principal) {
 
-        User user = findActiveUserById(userId);
+        // Received authenticated user details from security context from the controller.
+        /// BY DESIGN: The authenticated user can only change their own details!
+        User user = findActiveUserById(principal.getId());
 
         // Extract typed phone number from DTO, Sanitize & normalize it.
         String sanitizedPhone = sanitizeAndNormalizePhoneNumber(detailsDto.getPhoneNumber());
@@ -175,13 +177,10 @@ public class UserService {
         return userMapper.toDto(user);
     }
 
-    // TODO: Delete the refresh token to initiate a login after password change.
     @Transactional
-    public void updatePassword(Long userId, UserUpdatePasswordDto passwordDto, Long actorId) {
-        // Only the user can update the password. Not even the admin.
-        authorizationService.ensureSelf(actorId, userId);
-
-        User user = findActiveUserById(userId);
+     // Only the authenticated user can update (their own only) password.
+    public void updatePassword(UserUpdatePasswordDto passwordDto, CustomUserDetails principal) {
+        User user = findActiveUserById(principal.getId());
 
         // Validate the old password and enforce choosing a different new password
         if (!passwordEncoder.matches(passwordDto.getOldPassword(), user.getPasswordHash())) {
@@ -191,16 +190,16 @@ public class UserService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(passwordDto.getNewPassword()));
+
+        // Delete refresh token to force re-login for safety.
+        refreshTokenService.deleteTokenByUserId(principal.getId());
     }
 
     /// DELETE
     //SOFT delete
     @Transactional
-    public void deleteUser(Long userId, Long actorId) {
-        User actor = findActiveUserById(actorId);
-        authorizationService.ensureSelfOrAdmin(actor, userId);
-
-        User user = findActiveUserById(userId);
+    public void deleteUser(CustomUserDetails principal) {
+        User user = findActiveUserById(principal.getId());
 
         // If the user is associated with a company, de-associate them
         // and set their role back to CANDIDATE. Do it to prevent a rare race condition
