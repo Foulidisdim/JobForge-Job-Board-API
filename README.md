@@ -51,6 +51,12 @@ This project showcases expertise in robust backend development, relational data 
 
 ---
 
+## 🧪 API Testing
+- **Postman**: Used to test endpoints, authentication flows, and workflows.
+- Environment variables configured for easy management of endpoint URLs and JWT tokens.
+  
+---
+
 ## 💡 Why It Matters
 JobForge demonstrates production-grade backend engineering practices — from secure authentication and transactional safety to modular architecture using a clear Repositoy-Service–Controller layering.
 The design follows Domain-Driven Design to ensure clean separation of concerns, maintainability, and scalability.
