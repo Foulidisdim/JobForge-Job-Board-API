@@ -39,6 +39,19 @@ public class UserController {
         return ResponseEntity.ok(tokensResponse);
     }
 
+    //Logs out the current user. Deletes refresh tokens and updates the user's session invalidation timestamp
+    // to immediately invalidate any still-active access tokens (prevents malicious use during the token's
+    // remaining lifetime, e.g., 15 minutes).
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@AuthenticationPrincipal CustomUserDetails principal) {
+        if (principal != null) {
+            userService.logout(principal);
+            return ResponseEntity.ok("Logged out successfully.");
+        } else {
+            return ResponseEntity.status(401).body("User not authenticated.");
+        }
+    }
+
 
     /// READ
     // Active users only

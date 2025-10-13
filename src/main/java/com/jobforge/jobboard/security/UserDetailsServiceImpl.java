@@ -38,6 +38,5 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         // 2. Return my CUSTOMuserDetails implementation with id and company
         return new CustomUserDetails(user, user.getCompany());
-
     }
 }

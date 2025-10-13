@@ -21,6 +21,7 @@ public class GlobalExceptionHandler {
             DuplicateResourceException.class,
             RepostLimitExceededException.class,
             UnauthorizedException.class,
+            InvalidTokenException.class,
 
             // Standard Java exceptions handled to standardize responses for the frontend.
             IllegalArgumentException.class,
@@ -40,7 +41,7 @@ public class GlobalExceptionHandler {
                   )
         {
             status = HttpStatus.CONFLICT;
-        } else if (ex instanceof InvalidPasswordException) {
+        } else if (ex instanceof InvalidPasswordException || ex instanceof InvalidTokenException) {
             status = HttpStatus.UNAUTHORIZED;
         } else if (ex instanceof IllegalArgumentException) {
             status = HttpStatus.BAD_REQUEST;

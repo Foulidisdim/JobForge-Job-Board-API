@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -93,8 +94,6 @@ public class UserService {
                 .build();
     }
 
-
-    /// GET
     // User login.
     @Transactional()
     public JwtResponseDto login(UserLoginDto loginDto) {
@@ -146,6 +145,15 @@ public class UserService {
                 .build();
     }
 
+    @Transactional
+    public void logout(CustomUserDetails principal) {
+        // Revoke the long-term refresh token AND invalidate all existing Access Tokens immediately!
+        refreshTokenService.deleteTokenByUserId(principal.getId());
+        findActiveUserById(principal.getId()).setSessionInvalidationTime(Instant.now());
+    }
+
+
+    /// GET
     @Transactional(readOnly = true)
     public List<UserResponseDto> findAllActiveUsers() {
         return userRepository.findAllByDeletedFalse()
@@ -193,6 +201,9 @@ public class UserService {
 
         // Delete refresh token to force re-login for safety.
         refreshTokenService.deleteTokenByUserId(principal.getId());
+
+        // ALSO easily Invalidate all existing Access Tokens by updating the timestamp the filter checks for access token validation!
+        user.setSessionInvalidationTime(Instant.now());
     }
 
     /// DELETE
@@ -211,6 +222,10 @@ public class UserService {
 
         // Now soft delete the user by setting the flag and save again.
         user.setDeleted(true);
+
+        // Revoke long-term refresh token AND invalidate all existing Access Tokens immediately upon deactivation!
+        refreshTokenService.deleteTokenByUserId(principal.getId());
+        user.setSessionInvalidationTime(Instant.now());
     }
 
 

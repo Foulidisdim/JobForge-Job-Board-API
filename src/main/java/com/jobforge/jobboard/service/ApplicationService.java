@@ -42,9 +42,9 @@ public class ApplicationService {
     public ApplicationResponseDto apply(ApplicationCreationDto applicationDto, CustomUserDetails principal) {
         User candidate = userService.findActiveUserById(principal.getId());
 
-        // Concurrency of events: Check if the job is still active (employer/recruiter could have CLOSED it, moments before the candidate sent an Apply request, for example)
+        // Concurrency of events: Check if the job is still active (E.g., the employer/recruiter could have CLOSED it, moments before the candidate sent an Apply request).
         Job job = jobService.findNonDeletedJobById(applicationDto.getJobId());
-        if (job.getStatus() != com.jobforge.jobboard.enums.JobStatus.ACTIVE) {
+        if (job.getStatus() != JobStatus.ACTIVE) {
             throw new IllegalStateException("Cannot apply to an inactive job.");
         }
 

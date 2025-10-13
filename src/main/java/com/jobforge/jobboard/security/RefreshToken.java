@@ -44,6 +44,9 @@ public class RefreshToken {
     @Column(nullable = false)
     private Instant expiryDate;
 
+    @Column(nullable = false)
+    private Instant issuedAt;
+
     /**
      * SECURITY NOTE: We DO NOT define a 'back-reference' ('private RefreshToken refreshToken;')
      * on the User entity itself. This prevents accidentally loading or exposing

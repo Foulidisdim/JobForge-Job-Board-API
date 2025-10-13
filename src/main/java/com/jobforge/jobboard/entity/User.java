@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.List;
 
 @Entity
@@ -46,6 +47,32 @@ public class User {
     // Soft delete management field
     @Column(nullable = false)
     private boolean deleted = false;
+
+    /**
+     * <p><strong>Security Field:</strong> Records the timestamp of the user’s most recent
+     * session invalidation event — such as an explicit logout, password change, or account soft-deletion/deactivation.</p>
+     *
+     * <p>This field acts as a server-side safeguard for edge cases where an access token may still
+     * be cryptographically valid for a short period (e.g., within its 15-minute lifetime), despite having already
+     * deleted its associated refresh token. Any token issued <strong>before or at</strong> this timestamp should be rejected during authentication.</p>
+     *
+     * <p><strong>Why it matters:</strong><br>
+     * JWTs are stateless and cannot be revoked once issued. While cryptographic signatures prevent
+     * token tampering (any attempt to modify a token will fail its server side verification, unless the attacker possesses the server’s secret signing key),
+     * they do not inherently handle token invalidation scenarios such as logout, password reset, or account compromise.</p>
+     *
+     * <p>By comparing the token’s issued-at (iat) claim against this timestamp, the system can
+     * enforce server-driven session invalidation even when the token itself remains cryptographically valid.</p>
+     *
+     * <p><strong>Notes:</strong></p>
+     * <ul>
+     *   <li>This field is nullable — {@code null} indicates that no session invalidation has occurred yet.</li>
+     *   <li>Any token with an issuance time prior to this timestamp is considered invalid.</li>
+     *   <li>Ensures business-logic-level control over token validity, independent of JWT’s signature validation.</li>
+     * </ul>
+     */
+    private Instant sessionInvalidationTime;
+
 
     /// --Relationships--
     // EMPLOYERS/RECRUITERS -> COMPANY

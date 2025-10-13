@@ -7,6 +7,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,12 @@ public class CustomUserDetails implements UserDetails {
     @Getter
     private final Company company;
 
+    @Getter
+    private final boolean isDeleted;
+
+    @Getter
+    private final Instant sessionInvalidationTime;
+
     // -- STANDARD CONTRACT FIELDS --
 
     // The user's login identifier (email).
@@ -42,15 +49,17 @@ public class CustomUserDetails implements UserDetails {
     // --CONSTRUCTOR --
     public CustomUserDetails(User user, Company company) {
         // Initialize fields using the data from the Hibernate User entity.
-        this.id = user.getId();
         this.email = user.getEmail();
         this.passwordHash = user.getPasswordHash();
-        this.company = company; // TODO: Check if this works with my current transactional implementation or requires JOIN FETCH user+company in the User repo. Probably need to check the UserDetailsImpl that sends the company for this.
 
         // Convert the User's Role Enum into a Collection of Spring Security authorities.
         // Spring expects roles prefixed with "ROLE_" (e.g., ROLE_CANDIDATE)
         this.authorities = List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name()));
 
+        this.id = user.getId();
+        this.company = company; // TODO: Check in services if this does get the company with my current transactional implementation or requires JOIN FETCH user+company in the User repo. Probably need to check the UserDetailsImpl that sends the company for this.
+        this.isDeleted = user.isDeleted();
+        this.sessionInvalidationTime = user.getSessionInvalidationTime();
     }
 
     // -- CUSTOM GETTERS FOR AUTHORIZATION --

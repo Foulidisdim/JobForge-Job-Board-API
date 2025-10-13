@@ -36,16 +36,9 @@ public class JwtService {
 
         return Jwts.builder()
                 .setSubject(user.getEmail()) // "Subject" is the user's login identifier (email)
-
-                    // Apart from subject, issuedAt and Expiration claims,
-                    // ALSO Embed the user's DB UNIQUE IDENTIFIER (id)
-                    // directly into the token payload so that the API services can fetch user info without a DB lookup!
-                    .claim("uid", user.getId())
-                    .claim("deleted",user.isDeleted())
-
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256) // Signs token header and payload to ensure authenticity.// Uses the secret key from the environment variable (if present) or the specified key in application.yml.
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256) // Signs token header and payload to ensure authenticity. Uses the secret key from the environment variable (if present) or the specified secret key in application.yml.
                 .compact();
     }
 
@@ -72,12 +65,20 @@ public class JwtService {
         }
     }
 
-    public String extractUsername(String token) {
-        // We get the subject (email) from the claims body
-        return parseClaims(token).getSubject();
-    }
-
-    public boolean extractIsDeletedUserStatus(String token) {
-        return parseClaims(token).get("deleted", Boolean.class);
+    /**
+     * Performs the core revocation check (security feature).
+     * @param tokenIssuedAt The time the token was issued (from the 'iat' claim).
+     * @param lastSessionInvalidationTime The time the user last logged out (from the User entity).
+     * @return true if the token was issued BEFORE or AT the last logout time, meaning it's revoked.
+     */
+    public boolean isTokenRevoked(Instant tokenIssuedAt, Instant lastSessionInvalidationTime) {
+        if (lastSessionInvalidationTime == null) {
+            return false;
+        }
+        if (tokenIssuedAt == null) {
+            return true; // Malformed token without iat should be rejected
+        }
+        // If token issued before logout time -> invalid.
+        return !tokenIssuedAt.isAfter(lastSessionInvalidationTime); // Careful. True if the token is newer than invalidation, so with !, we return FALSE (not revoked).
     }
 }

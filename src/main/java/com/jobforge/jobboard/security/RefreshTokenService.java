@@ -1,7 +1,7 @@
 package com.jobforge.jobboard.security;
 
 import com.jobforge.jobboard.entity.User;
-import com.jobforge.jobboard.exception.ResourceNotFoundException;
+import com.jobforge.jobboard.exception.InvalidTokenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -34,25 +34,26 @@ public class RefreshTokenService {
         RefreshToken refreshToken = RefreshToken.builder()
                 .token(UUID.randomUUID().toString()) // Use a secure UUID for the token string
                 .expiryDate(Instant.now().plusMillis(refreshExpirationMs))
+                .issuedAt(Instant.now())
                 .user(user)
                 .build();
 
         return refreshTokenRepository.save(refreshToken);
     }
 
-    // VALIDATION (verify not expired and account not soft deleted)
+    // VALIDATION (verify not expired AND expiry date is AFTER the last session invalidation time!)
     @Transactional
-    public RefreshToken verifyExpiration(RefreshToken token) {
+    public RefreshToken validate(RefreshToken token) {
         if (token.getExpiryDate().isBefore(Instant.now())) {
             // If expired, delete token from the DB and throw exception.
             refreshTokenRepository.delete(token);
-            throw new ResourceNotFoundException("Refresh token was expired. Please make a new sign in request");
+            throw new InvalidTokenException("Refresh token was expired. Please make a new sign in request");
         }
 
-        if (token.getUser().isDeleted()) {
-            // If user account is soft-deleted, delete token from the DB and throw exception.
+        Instant lastInvalidation = token.getUser().getSessionInvalidationTime();
+        if (lastInvalidation != null && token.getIssuedAt().isBefore(lastInvalidation)) {
             refreshTokenRepository.delete(token);
-            throw new SecurityException("Account is deactivated.");
+            throw new InvalidTokenException("Refresh token invalidated due to session invalidation action (logout, password change, or account deletion).");
         }
 
         return token;

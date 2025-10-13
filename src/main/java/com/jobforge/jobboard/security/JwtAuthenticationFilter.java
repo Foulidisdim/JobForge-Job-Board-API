@@ -1,5 +1,8 @@
 package com.jobforge.jobboard.security;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 
 /// Spring does not natively handle JWT verification; it handles sessions.
 /// This is my custom JWT solution, intercepting every HTTP request that needs authentication.
@@ -36,6 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String userEmail;
+        final Claims claims;
 
         // 1. Check if the request is trying to authenticate OR NOT
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -48,35 +53,46 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
         // 2. Extract the RAW JWT STRING (TOKEN PRESENT. We didn't enter the above if Statement)
         jwt = authHeader.substring(7); // "Bearer " (with that space) is 7 characters long. The JWT Token string follows.
 
-        // 3. Extract the username (email) from the token
-        userEmail = jwtService.extractUsername(jwt);
+        // 3. Extract the claims from the token
+        try {
+            // Parse Claims
+            claims = jwtService.parseClaims(jwt);
+            userEmail = claims.getSubject();
+
+        } catch (ExpiredJwtException e) {
+            // Token is structurally valid but has expired
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Access Token has expired.");
+            return;
+        } catch (JwtException e) {
+            // Token is invalid (forged signature, malformed, etc.)
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or malformed Access Token.");
+            return;
+        }
 
         // 4. Validate the user and token
-        // Check if the userEmail is valid AND if the user is not currently authenticated
+        // Check if the userEmail ("Subject" in claims) is valid AND if the user is not currently authenticated
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
             // Load UserDetails (loads user roles and password hash FROM THE UserDetailsServiceImpl we defined!!)
-            CustomUserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            CustomUserDetails customUserDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
             // Check if the token is valid (not expired, signature matches, etc.)
-            if (jwtService.isTokenValid(jwt, userDetails)) {
+            if (jwtService.isTokenValid(jwt, customUserDetails)) {
 
-                /// EDGE CASE CHECK: User account deleted but tokens still active! REFUSE API ACCESS TILL ACCOUNT RECOVERY!
-                boolean isDeleted = jwtService.extractIsDeletedUserStatus(jwt);
-                if (isDeleted) {
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.getWriter().write("Account is deactivated. Access denied.");
-                    response.flushBuffer(); // Exit authentication. Don't pass down to the filter chain!
-                    return;
+                /// ACCESS TOKEN EDGE CASE CHECKS: User account SOFT-DELETED/DEACTIVATED-LOGGED OUT-PASSWORD CHANGED, but tokens still active! REFUSE API ACCESS!
+                Instant tokenIssuedAt = claims.getIssuedAt().toInstant();
+                if (jwtService.isTokenRevoked(tokenIssuedAt, customUserDetails.getSessionInvalidationTime())) {
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session invalidated.");
+                    return; // FILTER CHAIN BREAKER. AUTHENTICATION FAILED.
                 }
 
                 // 5. Create Authentication Token
                 // If valid, create an authentication object for Spring Security
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
 
-                        userDetails,
+                        customUserDetails,
                         null, //// Credentials null because the JWT ITSELF IS THE CREDENTIAL! No password is needed. We've validated the token, not a password.
-                        userDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
+                        customUserDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
                         /// Once the user is authenticated, Spring Security uses these authorities to
                         /// manage access (E.g, with @PreAuthorize("hasRole('ADMIN')")
                 );
