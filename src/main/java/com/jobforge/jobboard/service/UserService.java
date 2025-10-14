@@ -3,10 +3,7 @@ package com.jobforge.jobboard.service;
 import com.jobforge.jobboard.dto.*;
 import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.enums.Role;
-import com.jobforge.jobboard.exception.EmailAlreadyInUseException;
-import com.jobforge.jobboard.exception.EmailSoftDeletedException;
-import com.jobforge.jobboard.exception.InvalidPasswordException;
-import com.jobforge.jobboard.exception.ResourceNotFoundException;
+import com.jobforge.jobboard.exception.*;
 import com.jobforge.jobboard.mapstructmapper.UserMapper;
 import com.jobforge.jobboard.repository.UserRepository;
 import com.jobforge.jobboard.security.CustomUserDetails;
@@ -15,15 +12,17 @@ import com.jobforge.jobboard.security.JwtService;
 import com.jobforge.jobboard.security.RefreshTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -53,25 +52,25 @@ public class UserService {
     // If any part of the operation fails, the entire transaction is rolled back!!
     @Transactional
     public JwtResponseDto signUp(UserRegistrationDto registrationDto) {
-        // We need to handle soft deleted users (Say a deactivated account already exists with that email).
-        String email = registrationDto.getEmail();
+        // Check if user with that email already exists/is soft-deleted.
+        Optional<User> existingUser = userRepository.findByEmail(registrationDto.getEmail());
+        String email = registrationDto.getEmail(); // Assuming this is defined earlier
 
-        //1. Check if user with that email already exists.
-        if (userRepository.findByEmailAndDeletedFalse(email).isPresent()) {
-            throw new EmailAlreadyInUseException("Email already in use: " + registrationDto.getEmail());
+        if (existingUser.isPresent()) {
+            User user = existingUser.get(); // Correctly retrieve the User object
+
+            if (user.isDeleted()) {
+                throw new EmailSoftDeletedException("An account with this email was previously deleted. Please try recovering it, or continue signing up with a new account.");
+            }
+            // If account exists & NOT deleted -> it's currently in use
+            throw new EmailAlreadyInUseException("Email already in use: " + email);
         }
 
-        // 2. Check soft-deleted users.
-        if (userRepository.findByEmailAndDeletedTrue(email).isPresent()) {
-            // Instead of recovering, instruct the user to log in
-            throw new EmailSoftDeletedException("An account with this email was previously deleted. Please log in to recover it, or continue signing up with a new account.");
-        }
-
-        // 3. Extract typed phone number from DTO, Sanitize & normalize it.
+        // Extract typed phone number from DTO, Sanitize & normalize it.
         String sanitizedPhone = sanitizeAndNormalizePhoneNumber(registrationDto.getPhoneNumber());
         registrationDto.setPhoneNumber(sanitizedPhone);
 
-        // 4. Finally, create a new account.
+        // Finally, create a new account.
         // Instead of multiple lines like user.setField(registrationDto.getField());, I use mapStruct to reduce boilerplate code.
         User user = userMapper.toEntity(registrationDto);
 
@@ -82,7 +81,7 @@ public class UserService {
         User savedUser = userRepository.save(user); // returns the user with the DB initialized fields like id
 
         // AUTO-LOGIN after successful registration: Generate and return the tokens.
-        String accessToken = jwtService.generateAccessToken(savedUser);
+        String accessToken = jwtService.generateAccessToken(savedUser.getEmail());
         String refreshToken = refreshTokenService.createRefreshToken(savedUser).getToken();
 
         // 5. Return the dual token response (Access+Refresh)
@@ -97,8 +96,6 @@ public class UserService {
     // User login.
     @Transactional()
     public JwtResponseDto login(UserLoginDto loginDto) {
-        // Authenticate Credentials
-
         /// AuthenticationManager: Automatic UserDetailsServiceImpl and PasswordEncoder Dependencies!:
         /*
           Spring Security automatically delegates the authentication request to the
@@ -120,36 +117,86 @@ public class UserService {
         );
 
         // Load the authenticated User entity from the DB using the authenticated user's details
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found after authentication.")); // Should not happen.
+        CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
+
+        // 2. Check for soft-deletion
+        if (customUserDetails.isDeleted()) {
+            // DisabledException is perfect for logically disabled accounts
+            throw new DisabledException("Account deactivated. Please recover your account before logging in.");
+        }
+
 
         // Generate Tokens
-        String accessToken = jwtService.generateAccessToken(user);
+        String accessToken = jwtService.generateAccessToken(loginDto.getEmail());
         // Create/Update Refresh Token (Deletes old token, saves new one)
+        User user = findActiveUserById(customUserDetails.getId());
         String refreshToken = refreshTokenService.createRefreshToken(user).getToken();
-
-        // If email and password match:
-        //Auto-reactivate if the account was soft-deleted
-        if(user.isDeleted()){
-            user.setDeleted(false);
-            userRepository.save(user);
-        }
 
         // Return Dual Token Response (Access+Refresh)
         return JwtResponseDto.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
-                .userId(user.getId())
-                .userEmail(user.getEmail())
+                .userId(customUserDetails.getId())
+                .userEmail(customUserDetails.getUsername())
                 .build();
     }
 
     @Transactional
-    public void logout(CustomUserDetails principal) {
+    public void logout(Long principalId) {
         // Revoke the long-term refresh token AND invalidate all existing Access Tokens immediately!
-        refreshTokenService.deleteTokenByUserId(principal.getId());
-        findActiveUserById(principal.getId()).setSessionInvalidationTime(Instant.now());
+        refreshTokenService.deleteTokenByUserId(principalId);
+        findActiveUserById(principalId).setSessionInvalidationTime(Instant.now());
+    }
+
+    /// The "forgot password" flow. FrontEnd can lead to this in case of a password reset request, OR
+    /// if a deactivated account was found during log in or sign in (proves account and email ownership and control, and sets a new password for safety).
+    @Transactional
+    public String initiateRecovery(String email) {
+
+        // Check if the account exists and is soft-deleted
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("No account found with this email."));
+
+        if (!user.isDeleted()) {
+            throw new IllegalStateException("This account is already active. You can log in with your credentials.");
+        }
+
+        // Generate and save the token (20 minutes validity)
+        String recoveryToken = UUID.randomUUID().toString();
+        user.setRecoveryToken(recoveryToken);
+        user.setRecoveryTokenExpirationTime(Instant.now().plusSeconds(20 * 60)); // 20 minutes
+
+        // TODO: In production, replace the return with an email service call. E.g., emailService.sendRecoveryLink(user.getEmail(), recoveryToken);
+        return recoveryToken; // Temporarily return the token for testing
+    }
+
+    @Transactional
+    public void completeRecovery(String token, String newPassword) {
+
+        User user = userRepository.findByRecoveryToken(token)
+                .orElseThrow(() -> new InvalidTokenException("Invalid recovery token."));
+
+        if (user.getRecoveryTokenExpirationTime() == null || user.getRecoveryTokenExpirationTime().isBefore(Instant.now())) {
+            throw new InvalidTokenException("Recovery token has expired.");
+        }
+
+        // Check for deleted status (Logically impossible to fail but kept for defensive coding)
+        if (!user.isDeleted()) {
+            throw new IllegalStateException("Account is already active. Recovery is not needed.");
+        }
+
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalStateException("The new password cannot be the same as the previous password.");
+        }
+
+        // Update password and reactivate account
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setDeleted(false);
+        user.setSessionInvalidationTime(Instant.now()); // Invalidate old session/tokens
+
+        // 4. Clean up token fields
+        user.setRecoveryToken(null);
+        user.setRecoveryTokenExpirationTime(null);
     }
 
 

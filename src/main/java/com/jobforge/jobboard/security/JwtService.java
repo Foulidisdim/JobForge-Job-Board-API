@@ -1,6 +1,5 @@
 package com.jobforge.jobboard.security;
 
-import com.jobforge.jobboard.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -29,13 +28,13 @@ public class JwtService {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateAccessToken(User user) {
+    public String generateAccessToken(String userEmail) {
         // Using the modern java 8+ Instant for the Date. JWT still expects Date, so I convert when passing on the JWT builder.
         Instant now = Instant.now();
         Instant expiry = now.plusMillis(accessExpirationMs);
 
         return Jwts.builder()
-                .setSubject(user.getEmail()) // "Subject" is the user's login identifier (email)
+                .setSubject(userEmail) // "Subject" is the user's login identifier (email)
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256) // Signs token header and payload to ensure authenticity. Uses the secret key from the environment variable (if present) or the specified secret key in application.yml.

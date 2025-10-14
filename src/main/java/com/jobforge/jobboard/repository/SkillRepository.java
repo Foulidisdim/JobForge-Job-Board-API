@@ -12,4 +12,3 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
 
 //    Set<Skill> findAllByIdIn(Set<Long> skillIds);
 }
-

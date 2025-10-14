@@ -34,7 +34,6 @@ public class UserController {
     }
     @PostMapping("/login")
     public ResponseEntity<JwtResponseDto> login (@Valid @RequestBody UserLoginDto loginDto) {
-        System.out.println("Login request hit");
         JwtResponseDto tokensResponse = userService.login(loginDto);
         return ResponseEntity.ok(tokensResponse);
     }
@@ -43,13 +42,22 @@ public class UserController {
     // to immediately invalidate any still-active access tokens (prevents malicious use during the token's
     // remaining lifetime, e.g., 15 minutes).
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@AuthenticationPrincipal CustomUserDetails principal) {
-        if (principal != null) {
-            userService.logout(principal);
+    public ResponseEntity<String> logout(@AuthenticationPrincipal CustomUserDetails principal) {
+            userService.logout(principal.getId());
             return ResponseEntity.ok("Logged out successfully.");
-        } else {
-            return ResponseEntity.status(401).body("User not authenticated.");
-        }
+    }
+
+    // TODO: Edit this after email recovery is implemented (return 200 OK with a simple message).
+    @PostMapping("/recover/initiate")
+    public ResponseEntity<String> initiateAccountRecovery(@Valid @RequestBody UserRecoveryInitiationDto recoveryInitiationDtoDto) {
+        String recoveryToken = userService.initiateRecovery(recoveryInitiationDtoDto.getEmail());
+        return ResponseEntity.ok(recoveryToken);
+    }
+
+    @PostMapping("/recover/complete")
+    public ResponseEntity<String> completeRecovery(@Valid @RequestBody UserRecoveryCompletionDto recoveryCompletionDtoDto) {
+        userService.completeRecovery(recoveryCompletionDtoDto.getRecoveryToken(), recoveryCompletionDtoDto.getNewPassword());
+        return ResponseEntity.ok("Account successfully recovered. You can now log in.");
     }
 
 

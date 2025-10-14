@@ -71,7 +71,14 @@ public class User {
      *   <li>Ensures business-logic-level control over token validity, independent of JWT’s signature validation.</li>
      * </ul>
      */
+    @Column
     private Instant sessionInvalidationTime;
+
+    // Special recovery token and expiry time for password reset and soft-deleted account reinstantiation.
+    @Column
+    private String recoveryToken;
+    @Column
+    private Instant recoveryTokenExpirationTime;
 
 
     /// --Relationships--
@@ -92,4 +99,3 @@ public class User {
     @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Job> jobs;
 }
-

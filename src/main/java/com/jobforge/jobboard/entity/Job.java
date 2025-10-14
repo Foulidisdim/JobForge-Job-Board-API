@@ -101,5 +101,3 @@ public class Job {
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 }
-
-

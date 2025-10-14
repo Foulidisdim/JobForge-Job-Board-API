@@ -54,6 +54,7 @@ public class CustomUserDetails implements UserDetails {
 
         // Convert the User's Role Enum into a Collection of Spring Security authorities.
         // Spring expects roles prefixed with "ROLE_" (e.g., ROLE_CANDIDATE)
+        // TODO: Remove the ROLE prefix and just make all hasRole preauthorize SpEL as hasAuthority.
         this.authorities = List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name()));
 
         this.id = user.getId();

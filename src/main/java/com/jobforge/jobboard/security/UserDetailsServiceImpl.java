@@ -33,8 +33,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     // Loads the user data required by Spring Security for authentication. 'Username' in our case is the user's email.
     @Override
     public CustomUserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        // 1. Find the user entity by email (and ensure they are not deleted)
-        User user = userRepository.findByEmailAndDeletedFalse(email).orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+        // 1. Find the user entity by email
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
         // 2. Return my CUSTOMuserDetails implementation with id and company
         return new CustomUserDetails(user, user.getCompany());

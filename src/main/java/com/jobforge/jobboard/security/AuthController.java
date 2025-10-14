@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/auth") //authentication-specific functionality
+@RequestMapping("/api/auth/renewAccessToken") //authentication-specific functionality
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -19,19 +19,22 @@ public class AuthController {
 
     //Endpoint to renew an expired Access Token.
     // The client sends the long-lived Refresh Token to get a new short-lived Access Token.
-    @PostMapping("/renewAccessToken")
+    @PostMapping()
     public ResponseEntity<JwtResponseDto> reissueToken(@RequestBody RefreshTokenReissueRequestDto tokenRequest) {
 
         String refreshToken = tokenRequest.getRefreshToken();
 
-        // Find, Validate Expiration, and Generate New Access Token
-        String newAccessToken = refreshTokenService.findByToken(refreshToken) // Handles not found exceptions implicitly after the maps that happen if the token is found.
-                .map(refreshTokenService::validate) // Throw necessary Exception if expired OR attacker tries to make a new refresh token from a stolen one!
-                .map(RefreshToken::getUser)                 // Get the User associated with the valid token
-                .map(jwtService::generateAccessToken)       // Generate a new Access Token for that specified user
-                .orElseThrow(() -> new InvalidTokenException("Refresh token is not in database!")); // If refresh token not found or invalid
+        // Retrieve the token or throw InvalidTokenException if missing
+        RefreshToken token = refreshTokenService.findByToken(refreshToken)
+                .orElseThrow(() -> new InvalidTokenException("Refresh token not found!"));
 
-        // Return the new access token and the same valid refresh token
+        // Validate token (expiration and session invalidation)
+        refreshTokenService.validate(token);
+
+        // Generate new access token for the user that sent the refresh token
+        String newAccessToken = jwtService.generateAccessToken(token.getUser().getEmail());
+
+        // Return the new access token (refresh token remains the same)
         return ResponseEntity.ok(
                 JwtResponseDto.builder()
                         .accessToken(newAccessToken)

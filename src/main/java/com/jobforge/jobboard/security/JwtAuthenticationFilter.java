@@ -1,5 +1,6 @@
 package com.jobforge.jobboard.security;
 
+import com.jobforge.jobboard.exception.InvalidTokenException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -27,6 +28,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
 
     private final JwtService jwtService;
     private final UserDetailsServiceImpl userDetailsService;
+    private final PublicPaths publicPaths;
+
 
     // Override OncePerRequestFilter's official entry point for custom logic for JWT authentication.
     @Override
@@ -61,12 +64,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
 
         } catch (ExpiredJwtException e) {
             // Token is structurally valid but has expired
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Access Token has expired.");
-            return;
+            throw new InvalidTokenException("Access Token has expired.");
         } catch (JwtException e) {
             // Token is invalid (forged signature, malformed, etc.)
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or malformed Access Token.");
-            return;
+            throw new InvalidTokenException("Invalid or malformed Access Token.");
         }
 
         // 4. Validate the user and token
@@ -77,36 +78,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
             CustomUserDetails customUserDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
             // Check if the token is valid (not expired, signature matches, etc.)
-            if (jwtService.isTokenValid(jwt, customUserDetails)) {
-
-                /// ACCESS TOKEN EDGE CASE CHECKS: User account SOFT-DELETED/DEACTIVATED-LOGGED OUT-PASSWORD CHANGED, but tokens still active! REFUSE API ACCESS!
-                Instant tokenIssuedAt = claims.getIssuedAt().toInstant();
-                if (jwtService.isTokenRevoked(tokenIssuedAt, customUserDetails.getSessionInvalidationTime())) {
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session invalidated.");
-                    return; // FILTER CHAIN BREAKER. AUTHENTICATION FAILED.
-                }
-
-                // 5. Create Authentication Token
-                // If valid, create an authentication object for Spring Security
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-
-                        customUserDetails,
-                        null, //// Credentials null because the JWT ITSELF IS THE CREDENTIAL! No password is needed. We've validated the token, not a password.
-                        customUserDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
-                        /// Once the user is authenticated, Spring Security uses these authorities to
-                        /// manage access (E.g, with @PreAuthorize("hasRole('ADMIN')")
-                );
-
-                // Set authentication details (remote IP, session ID, etc.)
-                authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
-
-                /// 6. Update Security Context
-                /// Set the authentication token in Spring's SecurityContextHolder
-                /// Spring Security considers the user fully logged in and authorized for this request.
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+            if (!jwtService.isTokenValid(jwt, customUserDetails)){
+                throw new InvalidTokenException("Access Token is no longer valid.");
             }
+
+            /// ACCESS TOKEN EDGE CASE CHECKS: User account SOFT-DELETED/DEACTIVATED-LOGGED OUT-PASSWORD CHANGED, but tokens still active! REFUSE API ACCESS!
+            Instant tokenIssuedAt = claims.getIssuedAt().toInstant();
+            if (jwtService.isTokenRevoked(tokenIssuedAt, customUserDetails.getSessionInvalidationTime())) {
+                throw new InvalidTokenException("Session invalidated due to logout, deletion, or password change.");
+            }
+
+            // 5. Create Authentication Token
+            // If valid, create an authentication object for Spring Security
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+
+                    customUserDetails,
+                    null, //// Credentials null because the JWT ITSELF IS THE CREDENTIAL! No password is needed. We've validated the token, not a password.
+                    customUserDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
+                    /// Once the user is authenticated, Spring Security uses these authorities to
+                    /// manage access (E.g, with @PreAuthorize("hasRole('ADMIN')")
+            );
+
+            // Set authentication details (remote IP, session ID, etc.)
+            authToken.setDetails(
+                    new WebAuthenticationDetailsSource().buildDetails(request)
+            );
+
+            /// 6. Update Security Context
+            /// Set the authentication token in Spring's SecurityContextHolder
+            /// Spring Security considers the user fully logged in and authorized for this request.
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+
         }
 
         // 7. Pass to Next Filter
@@ -120,17 +122,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
 
     }
 
+
     // ADDED THIS METHOD TO SKIP FILTERING ON PUBLIC PATHS (signup, login and refresh!)
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         // 1. Get the URI path being requested (e.g., /api/users/signup)
         String path = request.getRequestURI();
-
-        // 2. Define the public path prefixes that should be ignored by the JWT filter
-        return path.startsWith("/api/users/signup") ||
-                path.startsWith("/api/users/login") ||
-                path.startsWith("/api/auth/refresh");
+        return publicPaths.getPublicPaths().contains(path);
     }
-
 }
-

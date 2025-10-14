@@ -21,7 +21,9 @@ public interface UserMapper {
     @Mapping(target = "applications", ignore = true)
     @Mapping(target = "jobs", ignore = true)
     @Mapping(target = "deleted", ignore = true)
-    @Mapping(target = "lastSessionInvalidationTime", ignore = true)
+    @Mapping(target = "sessionInvalidationTime", ignore = true)
+    @Mapping(target = "recoveryToken", ignore = true)
+    @Mapping(target = "recoveryTokenExpirationTime", ignore = true)
     User toEntity(UserRegistrationDto userDto);
 
     @Mapping(target = "id", ignore = true)
@@ -31,7 +33,9 @@ public interface UserMapper {
     @Mapping(target = "applications", ignore = true)
     @Mapping(target = "jobs", ignore = true)
     @Mapping(target = "deleted", ignore = true)
-    @Mapping(target = "lastSessionInvalidationTime", ignore = true)
+    @Mapping(target = "sessionInvalidationTime", ignore = true)
+    @Mapping(target = "recoveryToken", ignore = true)
+    @Mapping(target = "recoveryTokenExpirationTime", ignore = true)
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     void updateDetailsFromDto(UserUpdateDetailsDto dto, @MappingTarget User user);
 

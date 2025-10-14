@@ -6,6 +6,7 @@ spring:
     url: jdbc:postgresql://localhost:5432/jobboard
     username: jobforge_user
     password: Jobforge123!
+
   jpa:
     hibernate:
       ddl-auto: create # automatically creates tables from JPA and the @Entity classes representing my tables
@@ -23,3 +24,9 @@ security:
     secret: ${JWT_SECRET:QfT+pB+bT29qjRj0I6sF+vXw7L/sE4c2z1R8t1g5i7k=}
     access-expiration-ms: 900000   # 15m (JWT token lifespan)
     refresh-expiration-ms: 604800000 # 7d (refresh token lifespan)
+
+  public-paths:
+    - /api/users/signup
+    - /api/users/login
+    - /api/users/recover/**
+    - /api/auth/renewAccessToken

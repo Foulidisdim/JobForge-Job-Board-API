@@ -10,9 +10,10 @@ public interface UserRepository extends JpaRepository<User, Long> { // Repositor
 
     // Minding the soft delete tag, The search will either return a user or WON'T FIND ONE so it will return null.
     // "Optional" type needed to avoid null pointer exceptions (will return an Optional<User> object if the search doesn't find the required User object).
-    Optional<User> findByEmailAndDeletedFalse(String email);
-    Optional<User> findByEmailAndDeletedTrue(String email);
+//    Optional<User> findByEmailAndDeletedFalse(String email);
+//    Optional<User> findByEmailAndDeletedTrue(String email);
     Optional<User> findByEmail(String email);
+    Optional<User> findByRecoveryToken(String recoveryToken);
 
     Optional<User> findByIdAndDeletedFalse(Long id);
 

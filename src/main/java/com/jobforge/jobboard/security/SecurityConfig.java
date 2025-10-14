@@ -28,7 +28,9 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
-
+    private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+    private final CustomAccessDeniedHandler customAccessDeniedHandler;
+    private final PublicPaths publicPaths;
 
     // PasswordEncoder is an interface, and I use the BCrypt bean I defined to define its implementation!
     // With @Bean, spring can autowire the dependency and I HAVE THE ADVANTAGE OF FLEXIBILITY
@@ -46,29 +48,39 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Enable CORS and allow the filter to be applied.
-                .cors(Customizer.withDefaults())
+            // 1. Enable CORS and allow the filter to be applied.
+            .cors(Customizer.withDefaults())
 
-                // 2. Disable CSRF protection (attacks where the browser sends malicious cookies).
-                //    Using JWT means the API is STATELESS:
-                //      - No session sessions or cookies saved in the server because
-                //      - Each secured request from the frontEnd WILL INCLUDE THE JWT TOKEN in the authorization header.
-                .csrf(AbstractHttpConfigurer::disable)
+            // 2. Disable CSRF protection (attacks where the browser sends malicious cookies).
+            //    Using JWT means the API is STATELESS:
+            //      - No session sessions or cookies saved in the server because
+            //      - Each secured request from the frontEnd WILL INCLUDE THE JWT TOKEN in the authorization header.
+            .csrf(AbstractHttpConfigurer::disable)
 
-                // 3. Configure authorization for requests.
-                .authorizeHttpRequests(authorize -> authorize
-                        // Allow public access to sign-up, login, and token refresh (.permitAll())
-                        .requestMatchers("/api/users/signup", "/api/users/login", "/api/auth/refresh").permitAll()
-                        // All other requests MUST be authenticated (.authenticated())
-                        .anyRequest().authenticated()
-                )
+            // 3. Configure Spring security's 403 (authorization failure) and
+            // 401 (authentication failure) response to be more descriptive with my custom errorResponse format! (message+timestamp too)
+            .exceptionHandling(exception ->
+                    exception
+                            .authenticationEntryPoint(customAuthenticationEntryPoint)
+                            .accessDeniedHandler(customAccessDeniedHandler)
+            )
 
-                // 4. Configure Session Management (For JWT. "Don't create/store HTTP sessions. Expect a JWT token for authentication")
-                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // 4. Configure authorization for requests.
+            .authorizeHttpRequests(authorize -> authorize
+                    // Allow public access to these endpoints (.permitAll()).
+                    .requestMatchers(publicPaths.getPublicPaths().toArray(String[]::new)).permitAll()
+                    // All other requests MUST be authenticated (.authenticated())
+                    .anyRequest().authenticated()
+            )
 
-                /// 5. Add the JWT Filter (For JWT)
-                /// Run the custom auth filter BEFORE Spring's standard authentication process
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            // 5. Configure Session Management (For JWT. "Don't create/store HTTP sessions. Expect a JWT token for authentication")
+            .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+
+            /// 6. Add the JWT Filter (For JWT)
+            /// Run the custom auth filter BEFORE Spring's standard authentication process
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
 

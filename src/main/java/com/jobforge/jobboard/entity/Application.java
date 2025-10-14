@@ -52,4 +52,3 @@ public class Application {
     @JoinColumn(name = "candidate_id", nullable = false)
     private User candidate;
 }
-
