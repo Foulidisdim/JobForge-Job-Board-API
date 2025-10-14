@@ -3,7 +3,6 @@ package com.jobforge.jobboard.controller;
 import com.jobforge.jobboard.dto.*;
 import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.security.JwtResponseDto;
-import com.jobforge.jobboard.service.CompanyService;
 import com.jobforge.jobboard.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +19,6 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
-    private final CompanyService companyService;
 
     // TODO: Use the "findbyid" method for internal use only after my tests. Public search of data should happen with other identifiers like Name (users) or title (job).
     // TODO: Remember to @Valid on ALL @RequestBody parameters on the controllers!
@@ -80,7 +78,7 @@ public class UserController {
     @GetMapping("/{id}/company")
     public ResponseEntity<CompanyResponseDto> getCompanyForUser(@PathVariable Long id) {
 
-        CompanyResponseDto company = companyService.getCompanyForUser(id);
+        CompanyResponseDto company = userService.getCompanyForUser(id);
         return ResponseEntity.ok(company);
     }
 

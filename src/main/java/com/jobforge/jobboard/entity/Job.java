@@ -71,8 +71,8 @@ public class Job {
     @Column(nullable = false)
     private JobStatus status; // frondEnd will set DRAFT or ACTIVE upon creation ("Save as draft" or "Post now" functionality)
 
-    //Relationships
 
+    /// --Relationships--
     // Skills are stored as a separate entity instead of a comma-separated string.
     // Many-to-many relationship between jobs and skills enables effective skill searching.
     // @JoinTable creates a NEW table with two foreign keys: job_id and skill_id.
@@ -85,17 +85,21 @@ public class Job {
     )
     private List<Skill> skills = new ArrayList<>();
 
-
-    /// --Relationships--
     // JOB -> APPLICATIONS
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL)
     private List<Application> applications;
 
     // JOBS -> EMPLOYER/RECRUITER (who created them)
     // Associated company is derived from the user at higher layers to maintain the user as a SINGLE SOURCE OF TRUTH!
+    // Kept intact after job creation for auditability
     @ManyToOne
     @JoinColumn(name = "creator_id", nullable = false)
     private User createdBy;
+
+    // Might be updated after job creation (E.g., in case of the creator user deletion)
+    @ManyToOne
+    @JoinColumn(name = "managed_by_id", nullable = false)
+    private User managedBy;
 
     @ManyToOne
     @JoinColumn(name = "company_id", nullable = false)

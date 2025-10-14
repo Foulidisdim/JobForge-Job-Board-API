@@ -70,7 +70,7 @@ public class SkillService {
 
     /// UPDATE
     @Transactional
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public SkillResponseDto updateSkill(Long skillId, SkillUpdateDto dto) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new ResourceNotFoundException("Skill not found"));
@@ -83,7 +83,7 @@ public class SkillService {
 
     /// DELETE
     @Transactional
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public void deleteSkill(Long id) {
         if (!skillRepository.existsById(id)) {
             throw new ResourceNotFoundException("Skill not found.");

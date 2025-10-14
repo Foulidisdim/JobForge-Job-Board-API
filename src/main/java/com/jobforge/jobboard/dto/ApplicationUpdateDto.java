@@ -3,6 +3,7 @@ package com.jobforge.jobboard.dto;
 import com.jobforge.jobboard.enums.ApplicationStatus;
 import com.jobforge.jobboard.enums.EnumSubset;
 import com.jobforge.jobboard.enums.JobStatus;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
@@ -16,5 +17,6 @@ public class ApplicationUpdateDto {
     @EnumSubset(enumClass = JobStatus.class, anyOf = {"REJECTED", "ACCEPTED"})
     private ApplicationStatus status;
 
+    @NotBlank
     private String applicationNotes;
 }

@@ -40,9 +40,6 @@ public class Company {
     @CreatedDate
     private Instant createdAt;
 
-    @Column(nullable = false, updatable = false)
-    private Long createdByUserId;
-
     // Soft delete management field
     @Column(nullable = false)
     private boolean deleted = false;
@@ -58,4 +55,9 @@ public class Company {
     // COMPANY -> EMPLOYERS/RECRUITERS (Employer AND recruiters associated with the company)
     @OneToMany(mappedBy = "company")
     private List<User> relatedUsers;
+
+    // TODO: Rethink nullable enforcement when making the admin hard delete operations. Some fields have to be nullable if data is actually deleted.
+    @ManyToOne
+    @JoinColumn(name = "employer_id", nullable = false)
+    private User employer;
 }

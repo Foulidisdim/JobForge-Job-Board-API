@@ -4,8 +4,10 @@ import com.jobforge.jobboard.dto.CompanyCreationDto;
 import com.jobforge.jobboard.dto.CompanyResponseDto;
 import com.jobforge.jobboard.dto.CompanyUpdateDto;
 import com.jobforge.jobboard.dto.UserResponseDto;
+import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.service.CompanyService;
+import com.jobforge.jobboard.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,11 +23,14 @@ import java.util.List;
 public class CompanyController {
 
     private final CompanyService companyService;
+    private final UserService userService;
 
     /// CREATE
     @PostMapping()
     public ResponseEntity<CompanyResponseDto> createCompany(@Valid @RequestBody CompanyCreationDto companyCreationDto, @AuthenticationPrincipal CustomUserDetails principal) {
-        CompanyResponseDto companyResponseDto = companyService.createCompany(companyCreationDto, principal);
+
+        User founder = userService.findActiveUserById(principal.getId());
+        CompanyResponseDto companyResponseDto = companyService.createCompany(companyCreationDto, founder);
         return ResponseEntity.status(HttpStatus.CREATED).body(companyResponseDto);
     }
 
@@ -34,7 +39,8 @@ public class CompanyController {
     @PostMapping("/myRecruiters/{recruiterId}")
     public ResponseEntity<UserResponseDto> appointRecruiter(@PathVariable Long recruiterId, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        UserResponseDto responseDto = companyService.appointRecruiter(recruiterId, principal);
+        User userToAppoint = userService.findActiveUserById(recruiterId);
+        UserResponseDto responseDto = companyService.appointRecruiter(userToAppoint, principal);
         return ResponseEntity.ok(responseDto);  // HTTP 200 OK status with the newly updated user's DTO.
     }
 
@@ -71,7 +77,9 @@ public class CompanyController {
     @PutMapping("/changeEmployer")
     public ResponseEntity<CompanyResponseDto> changeCompanyEmployer(@RequestParam Long newEmployerId, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        CompanyResponseDto updatedCompany = companyService.changeCompanyEmployer(newEmployerId, principal);
+        User currentEmployer = userService.findActiveUserById(principal.getId());
+        User newEmployer = userService.findActiveUserById(newEmployerId);
+        CompanyResponseDto updatedCompany = companyService.changeCompanyEmployer(currentEmployer, newEmployer, principal);
         return ResponseEntity.ok(updatedCompany);
     }
 
@@ -86,7 +94,8 @@ public class CompanyController {
     @DeleteMapping("/myRecruiters/{recruiterId}")
     public ResponseEntity<UserResponseDto> removeRecruiter( @PathVariable Long recruiterId,  @AuthenticationPrincipal CustomUserDetails principal) {
 
-        UserResponseDto responseDto = companyService.removeRecruiter(recruiterId, principal);
+        User recruiter = userService.findActiveUserById(recruiterId);
+        UserResponseDto responseDto = companyService.removeRecruiter(recruiter, principal);
         return ResponseEntity.ok(responseDto);
     }
 }

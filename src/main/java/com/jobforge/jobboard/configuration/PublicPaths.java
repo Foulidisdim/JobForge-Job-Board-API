@@ -1,4 +1,4 @@
-package com.jobforge.jobboard.security;
+package com.jobforge.jobboard.configuration;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

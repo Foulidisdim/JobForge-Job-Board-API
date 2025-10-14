@@ -43,7 +43,7 @@ public class CustomUserDetails implements UserDetails {
     // The hashed password stored in the database.
     private final String passwordHash;
 
-    // The user's roles and permissions (e.g., ROLE_ADMIN, ROLE_CANDIDATE).
+    // The user's roles and permissions (e.g., ADMIN, CANDIDATE).
     private final Collection<? extends GrantedAuthority> authorities;
 
     // --CONSTRUCTOR --
@@ -53,9 +53,8 @@ public class CustomUserDetails implements UserDetails {
         this.passwordHash = user.getPasswordHash();
 
         // Convert the User's Role Enum into a Collection of Spring Security authorities.
-        // Spring expects roles prefixed with "ROLE_" (e.g., ROLE_CANDIDATE)
-        // TODO: Remove the ROLE prefix and just make all hasRole preauthorize SpEL as hasAuthority.
-        this.authorities = List.of(new SimpleGrantedAuthority("ROLE_"+user.getRole().name()));
+        // TODO: NO ROLE_ PREFIX! Make all hasRole preauthorize as hasAuthority.
+        this.authorities = List.of(new SimpleGrantedAuthority(user.getRole().name()));
 
         this.id = user.getId();
         this.company = company; // TODO: Check in services if this does get the company with my current transactional implementation or requires JOIN FETCH user+company in the User repo. Probably need to check the UserDetailsImpl that sends the company for this.

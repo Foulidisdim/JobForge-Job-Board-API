@@ -10,7 +10,7 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
     Optional<Company> findByIdAndDeletedFalse(Long id);
 
     List<Company> findAllByDeletedFalse();
-//    List<Company> findByNameContainingIgnoreCaseAndIsDeletedFalse(String name);
-//    List<Company> findByIndustryContainingIgnoreCaseAndIsDeletedFalse(String industry);
+//    List<Company> findAllByNameContainingIgnoreCaseAndIsDeletedFalse(String name);
+//    List<Company> findAllByIndustryContainingIgnoreCaseAndIsDeletedFalse(String industry);
 
 }

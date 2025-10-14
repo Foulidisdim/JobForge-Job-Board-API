@@ -22,9 +22,9 @@ public interface UserRepository extends JpaRepository<User, Long> { // Repositor
     // Optional ISN'T NEEDED! Spring will just return an empty list, but not a null!
     List<User> findAllByDeletedFalse();
 
-//    List<User> findByCompanyIdAndRoleAndIsDeletedFalse(Long companyId, Role role);
-//    List<User> findByCompanyIdAndIsDeletedFalse(Long companyId);
-//    List<User> findByFirstNameContainingIgnoreCaseAndIsDeletedFalse(String firstName);
-//    List<User> findByLastNameContainingIgnoreCaseAndIsDeletedFalse(String lastName);
-//    List<User> findByRoleAndIsDeletedFalse(Role role);
+//    List<User> findAllByCompanyIdAndRoleAndIsDeletedFalse(Long companyId, Role role);
+//    List<User> findAllByCompanyIdAndIsDeletedFalse(Long companyId);
+//    List<User> findAllByFirstNameContainingIgnoreCaseAndIsDeletedFalse(String firstName);
+//    List<User> findAllByLastNameContainingIgnoreCaseAndIsDeletedFalse(String lastName);
+//    List<User> findAllByRoleAndIsDeletedFalse(Role role);
 }

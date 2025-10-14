@@ -1,5 +1,6 @@
 package com.jobforge.jobboard.security;
 
+import com.jobforge.jobboard.configuration.PublicPaths;
 import com.jobforge.jobboard.exception.InvalidTokenException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -94,7 +95,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // Ensures f
 
                     customUserDetails,
                     null, //// Credentials null because the JWT ITSELF IS THE CREDENTIAL! No password is needed. We've validated the token, not a password.
-                    customUserDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., ROLE_CANDIDATE) to enforce them in possible security checks!!
+                    customUserDetails.getAuthorities() // Load a COLLECTION OF the user's ROLES (e.g., CANDIDATE) to enforce them in possible security checks!!
                     /// Once the user is authenticated, Spring Security uses these authorities to
                     /// manage access (E.g, with @PreAuthorize("hasRole('ADMIN')")
             );

@@ -15,7 +15,7 @@ public interface CompanyMapper {
     @Mapping(target = "relatedUsers", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "deleted", ignore = true)
-    @Mapping(target = "createdByUserId", ignore = true) // Creator ID is MANUALLY set on the service.
+    @Mapping(target = "employer", ignore = true) // Creator ID is MANUALLY set on the service.
     Company toEntity(CompanyCreationDto dto);
 
     // --- MAPPING FROM DTO TO ENTITY (for update) ---
@@ -24,7 +24,7 @@ public interface CompanyMapper {
     @Mapping(target = "relatedUsers", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "deleted", ignore = true)
-    @Mapping(target = "createdByUserId", ignore = true)
+    @Mapping(target = "employer", ignore = true)
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     void updateCompanyFromDto(CompanyUpdateDto dto, @MappingTarget Company company);
 

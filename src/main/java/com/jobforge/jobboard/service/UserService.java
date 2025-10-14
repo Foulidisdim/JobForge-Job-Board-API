@@ -1,9 +1,11 @@
 package com.jobforge.jobboard.service;
 
 import com.jobforge.jobboard.dto.*;
+import com.jobforge.jobboard.entity.Company;
 import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.enums.Role;
 import com.jobforge.jobboard.exception.*;
+import com.jobforge.jobboard.mapstructmapper.CompanyMapper;
 import com.jobforge.jobboard.mapstructmapper.UserMapper;
 import com.jobforge.jobboard.repository.UserRepository;
 import com.jobforge.jobboard.security.CustomUserDetails;
@@ -32,12 +34,19 @@ public class UserService {
     // The lombok requiredArgsConstructor annotation plus these effectively make the Dependency Injection.
     private final UserRepository userRepository;
 
+    private final CompanyMapper  companyMapper;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+    private final BusinessRuleService businessRuleService;
+
+    private final ApplicationService applicationService;
+    private final JobService jobService;
+    private final CompanyService companyService;
+
 
     // TODO: Choose which data the admin will have administrative access in (e.g update or delete other user's data) and implement the access. Also, Implement admin cleanups to also hard delete stuff (e.g. auto deletions after some days or immediate deletion of deactivated data functionality.
 
@@ -143,9 +152,8 @@ public class UserService {
 
     @Transactional
     public void logout(Long principalId) {
-        // Revoke the long-term refresh token AND invalidate all existing Access Tokens immediately!
-        refreshTokenService.deleteTokenByUserId(principalId);
-        findActiveUserById(principalId).setSessionInvalidationTime(Instant.now());
+        User user = findActiveUserById(principalId);
+        businessRuleService.invalidateAllAuthenticationTokens(user);
     }
 
     /// The "forgot password" flow. FrontEnd can lead to this in case of a password reset request, OR
@@ -192,7 +200,8 @@ public class UserService {
         // Update password and reactivate account
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setDeleted(false);
-        user.setSessionInvalidationTime(Instant.now()); // Invalidate old session/tokens
+
+        businessRuleService.invalidateAllAuthenticationTokens(user);
 
         // 4. Clean up token fields
         user.setRecoveryToken(null);
@@ -213,6 +222,19 @@ public class UserService {
     public UserResponseDto getActiveUserDtoById(Long userId) {
         User user = findActiveUserById(userId);
         return userMapper.toDto(user);
+    }
+
+    @Transactional(readOnly = true)
+    public CompanyResponseDto getCompanyForUser(Long actorId) {
+
+        User user = findActiveUserById(actorId);
+
+        // The user must be associated with a company.
+        if (user.getCompany() == null) {
+            throw new IllegalStateException("User is not associated with any company.");
+        }
+
+        return companyMapper.toDto(user.getCompany());
     }
 
 
@@ -246,11 +268,7 @@ public class UserService {
 
         user.setPasswordHash(passwordEncoder.encode(passwordDto.getNewPassword()));
 
-        // Delete refresh token to force re-login for safety.
-        refreshTokenService.deleteTokenByUserId(principal.getId());
-
-        // ALSO easily Invalidate all existing Access Tokens by updating the timestamp the filter checks for access token validation!
-        user.setSessionInvalidationTime(Instant.now());
+        businessRuleService.invalidateAllAuthenticationTokens(user);
     }
 
     /// DELETE
@@ -258,21 +276,35 @@ public class UserService {
     @Transactional
     public void deleteUser(CustomUserDetails principal) {
         User user = findActiveUserById(principal.getId());
+        Long userId = user.getId();
+        Company company = user.getCompany();
 
-        // If the user is associated with a company, de-associate them
-        // and set their role back to CANDIDATE. Do it to prevent a rare race condition
-        // in which a user associated with a company is accessed moments before their deletion.
-        if (user.getCompany() != null) {
+        // APPLICATIONS HANDLING
+        applicationService.handleUserAccountDeletionApplicationsCleanup(userId);
+
+        // COMPANY & JOB INTEGRITY CHECK (upon employer/recruiter deletion)
+        if (company != null) {
+
+            // If the deleted user was the company's Employer, the company structure is broken.
+            if (user.getRole() == Role.EMPLOYER) {
+                // The company itself and its jobs must be soft-deleted. All company recruiters must also become candidates.
+                companyService.handleCompanySoftDeletionBecauseOfEmployerDeletion(company);
+            }
+            else if (user.getRole() == Role.RECRUITER) {
+                User currentEmployer = company.getEmployer();
+                // Call the job transfer directly, as the company remains active and has a manager.
+                jobService.transferJobManagement(userId, company.getId(), currentEmployer);
+            }
+
+            // Necessary disassociations
+            company.getRelatedUsers().remove(user);
             user.setCompany(null);
-            user.setRole(Role.CANDIDATE);
+            user.setRole(Role.CANDIDATE); // Best to revert to base role before soft deletion
         }
 
-        // Now soft delete the user by setting the flag and save again.
+        // Now soft delete the user by setting the flag and revoke access.
         user.setDeleted(true);
-
-        // Revoke long-term refresh token AND invalidate all existing Access Tokens immediately upon deactivation!
-        refreshTokenService.deleteTokenByUserId(principal.getId());
-        user.setSessionInvalidationTime(Instant.now());
+        businessRuleService.invalidateAllAuthenticationTokens(user);
     }
 
 

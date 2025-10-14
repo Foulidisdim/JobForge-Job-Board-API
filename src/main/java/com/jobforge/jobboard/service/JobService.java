@@ -36,14 +36,13 @@ public class JobService {
     private final JobMapper jobMapper;
 
     private final SkillService skillService;
-    private final UserService userService;
 
     /// CREATE
     //Creates a new job posting from a DTO.
     // The `status` will be set by the client (DRAFT or ACTIVE only).
     @Transactional
-    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
-    public JobResponseDto createJob(JobCreationDto creationDto, CustomUserDetails principal) {
+    @PreAuthorize("hasAnyAuthority('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto createJob(JobCreationDto creationDto, User creator, CustomUserDetails principal) {
 
         if (creationDto.getSalaryMin() > creationDto.getSalaryMax()) {
             throw new IllegalArgumentException("Maximum salary must be greater than or equal to minimum salary.");
@@ -55,9 +54,9 @@ public class JobService {
         //Trim possible title start and end space chars
         job.setTitle(job.getTitle().trim());
 
-        // Manual mapping for createdBy as it's not in the DTO
-        User creator = userService.findActiveUserById(principal.getId());
+        // Manual mapping for created/managed By as it's not in the DTO
         job.setCreatedBy(creator);
+        job.setManagedBy(creator);
         //Manual addition of the Company object to the job object based on the ID.
         job.setCompany(company);
 
@@ -80,7 +79,7 @@ public class JobService {
     private int repostCooldownDays; //Used to define the repost days constraint
     // Must only apply on active jobs.
     @Transactional
-    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    @PreAuthorize("hasAnyAuthority('EMPLOYER', 'RECRUITER')")
     public JobResponseDto repostJob(Long jobId, CustomUserDetails principal) {
         Job job = findNonDeletedJobById(jobId);
 
@@ -110,8 +109,8 @@ public class JobService {
     }
 
     @Transactional
-    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
-    public JobResponseDto duplicateClosedJob(Long jobId, @EnumSubset(enumClass = JobStatus.class, anyOf = { "DRAFT", "ACTIVE" }) JobStatus status, CustomUserDetails principal) {
+    @PreAuthorize("hasAnyAuthority('EMPLOYER', 'RECRUITER')")
+    public JobResponseDto duplicateClosedJob(Long jobId, @EnumSubset(enumClass = JobStatus.class, anyOf = { "DRAFT", "ACTIVE" }) JobStatus status, User actor, CustomUserDetails principal) {
 
         Job originalJob = findNonDeletedJobById(jobId);
 
@@ -125,7 +124,6 @@ public class JobService {
             throw new IllegalStateException("Only closed jobs can be duplicated.");
         }
 
-        User actor = userService.findActiveUserById(principal.getId());
         Job duplicateJob = copyJobFields(actor,originalJob,status);
 
         Job savedDuplicate = jobRepository.save(duplicateJob);
@@ -136,7 +134,7 @@ public class JobService {
     /// UPDATE
     // Updates an existing job posting.
     @Transactional
-    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    @PreAuthorize("hasAnyAuthority('EMPLOYER', 'RECRUITER')")
     public JobResponseDto updateJob(Long jobId, JobUpdateDto updateDto, CustomUserDetails principal) {
         if (updateDto.getSalaryMin() > updateDto.getSalaryMax()) {
             throw new IllegalArgumentException("Maximum salary must be greater than or equal to minimum salary.");
@@ -167,6 +165,33 @@ public class JobService {
     }
 
 
+    // TODO: Make an endpoint that uses this as a feature for the employer! Refactor with preauthorize and principal or just use this method inside a new one, specifically designed for the endpoint.
+    /**
+     * Transfers management rights for a set of jobs from the old manager to a new active employer.
+     * @param jobManagerId The ID of the user whose management rights are being revoked.
+     * @param companyId The ID of the company to scope the job search.
+     * @param newManager The User who will take over management.
+     */
+    @Transactional
+    public void transferJobManagement(Long jobManagerId, Long companyId, User newManager) {
+
+        // This can happen inside the method that handles the company deletion when the company employer is deleted.
+        if (Objects.equals(jobManagerId, newManager.getId())) {
+            return;
+        }
+
+        // Find all jobs currently managed by the user specified by jobManagerId.
+        // NOTE: Job management can be reassigned, so searching by managedBy instead of createdBy is correct.
+        List<Job> jobsToTransfer = findJobsByManagedByIdAndCompanyId(jobManagerId, companyId);
+
+        if (jobsToTransfer.isEmpty()) {
+            return;
+        }
+        // Implicit save thanks to @Transactional and JPA dirty checking.
+        jobsToTransfer.forEach(job -> job.setManagedBy(newManager));
+    }
+
+
     /// DELETE
     // We soft-delete the job posting by setting the status as "DELETED".
     // Keep the file for historical reasons.
@@ -193,22 +218,33 @@ public class JobService {
 
     // Company use only. VALIDATE so deleted jobs don't show up to the employers/candidates.
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAnyRole('EMPLOYER', 'RECRUITER')")
+    @PreAuthorize("hasAnyAuthority('EMPLOYER', 'RECRUITER')")
     public List<JobResponseDto> findCompanyJobsByStatus(@EnumSubset(enumClass = JobStatus.class, anyOf = {"ACTIVE", "DRAFT", "CLOSED"}) JobStatus status,  CustomUserDetails principal) {
 
         // Find ONLY the jobs associated with their current company
-        List<Job> jobs = jobRepository.findAllByCompanyAndStatus(principal.getCompany(), status);
+        List<Job> jobs = jobRepository.findAllByCompanyIdAndStatus(principal.getCompany().getId(), status);
         return jobs.stream().map(jobMapper::toDto).collect(Collectors.toList());
     }
 
 
-    /// Centralized job-finding logic to avoid redundancy.
-    // This method is for service-to-service communication as well as internals service use.
+    /// job-finding logic to avoid redundancy and service-to-service communication.
     @Transactional(readOnly = true)
     public Job findNonDeletedJobById(Long id) {
         return jobRepository.findByIdAndStatusNot(id, JobStatus.DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("Job not found."));
     }
+
+    @Transactional(readOnly = true)
+    public Job findJobByIdAndStatus(Long id, JobStatus status) {
+        return jobRepository.findByIdAndStatus(id, status)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found with status: " + status.name()));
+    }
+
+    @Transactional
+    public List<Job> findJobsByManagedByIdAndCompanyId (Long jobManagerId, Long companyId) {
+        return jobRepository.findAllByManagedByIdAndCompanyId(jobManagerId, companyId);
+    }
+
 
     @Transactional(readOnly = true)
     public JobResponseDto getNonDeletedJobResponseById(Long id) {
@@ -239,6 +275,7 @@ public class JobService {
 
         // Set creator and company
         duplicateJob.setCreatedBy(actor);
+        duplicateJob.setManagedBy(actor);
         duplicateJob.setCompany(company);
 
         // DRAFT or ACTIVE according to the frontEnd's message

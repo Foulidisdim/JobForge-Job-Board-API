@@ -31,28 +31,25 @@ public class CompanyService {
     private final CompanyMapper companyMapper;
     private final UserMapper userMapper;
 
-    private final UserService userService;
+    private final JobService jobService;
+    private final BusinessRuleService businessRuleService;
 
     /// POST
     @Transactional
-    @PreAuthorize("!hasAnyRole('EMPLOYER', 'RECRUITER')") // Business Rule: A user cannot create a company if they are already associated with one (check with no db hit!).
-    public CompanyResponseDto createCompany(CompanyCreationDto companyDto, CustomUserDetails principal/* Derived by the signed-in user from spring security*/ ) {
+    @PreAuthorize("!hasAnyAuthority('EMPLOYER', 'RECRUITER')") // Business Rule: A user cannot create a company if they are already associated with one (check with no db hit!).
+    public CompanyResponseDto createCompany(CompanyCreationDto companyDto, User founder /* Derived by the signed-in user from spring security*/ ) {
 
-        // If business rule is valid, THEN do the required db search to update the user entity.
-        User user = userService.findActiveUserById(principal.getId());
-
-        user.setRole(Role.EMPLOYER); //becomes employer when they create their company! Automatically saved because of the transactional annotation and JPA dirty checking!
+        founder.setRole(Role.EMPLOYER); //becomes employer when they create their company! Automatically saved because of the transactional annotation and JPA dirty checking!
         Company company = companyMapper.toEntity(companyDto);
-        company.setRelatedUsers(List.of(user));
+        company.setRelatedUsers(List.of(founder));
 
-        /// createdByUserId comes from the authenticated user (principal), not the client.
-        /// It is manually set here because MapStruct cannot access the authenticated user context.
-        /// Setting it here is safe because the user has already been validated and business rules applied.
-        company.setCreatedByUserId(principal.getId());
-
-        user.setCompany(company);
+        company.setEmployer(founder);
+        founder.setCompany(company);
 
         Company savedCompany = companyRepository.save(company);
+
+        // Invalidate all token to enforce a re-login for role refresh.
+        businessRuleService.invalidateAllAuthenticationTokens(founder);
 
         return companyMapper.toDto(savedCompany);
     }
@@ -61,10 +58,9 @@ public class CompanyService {
     /// UPDATE
     // @PreAuthorize and the authenticated principal seamlessly forced changes only to an Employers OWN company!
     @Transactional
-    @PreAuthorize("hasRole('EMPLOYER')")
-    public UserResponseDto appointRecruiter(Long newRecruiterId, CustomUserDetails principal) {
+    @PreAuthorize("hasAuthority('EMPLOYER')")
+    public UserResponseDto appointRecruiter(User userToAppoint, CustomUserDetails principal) {
 
-        User userToAppoint = userService.findActiveUserById(newRecruiterId);
 
         // Business Rule Validation
         // 1. A user with an existing company association (i.e., a recruiter or its employer) cannot be a recruiter.
@@ -79,12 +75,15 @@ public class CompanyService {
         // Safe because only an authenticated employer (and only for their company) can call this method!
         userToAppoint.setCompany(principal.getCompany());
 
+        // Invalidate all token to enforce a re-login for role refresh.
+        businessRuleService.invalidateAllAuthenticationTokens(userToAppoint);
+
         // Return a DTO to confirm the successful appointment.
         return userMapper.toDto(userToAppoint); // Assumes you have a UserMapper.
     }
 
     @Transactional
-    @PreAuthorize("hasRole('EMPLOYER')")
+    @PreAuthorize("hasAuthority('EMPLOYER')")
     public CompanyResponseDto updateCompany(CompanyUpdateDto updateDto, CustomUserDetails principal) { // Only for their own company.
         Company company = principal.getCompany();
 
@@ -93,10 +92,9 @@ public class CompanyService {
     }
 
     @Transactional
-    @PreAuthorize("hasRole('EMPLOYER')") // Only for their own company.
-    public UserResponseDto removeRecruiter(Long recruiterId, CustomUserDetails principal) {
+    @PreAuthorize("hasAuthority('EMPLOYER')") // Only for their own company.
+    public UserResponseDto removeRecruiter(User recruiter, CustomUserDetails principal) {
 
-        User recruiter = userService.findActiveUserById(recruiterId);
 
         // Check that the user is actually a recruiter for this company.
         // This prevents a user from removing a recruiter from a company they aren't part of.
@@ -104,22 +102,25 @@ public class CompanyService {
             throw new IllegalStateException("User is not a recruiter for this company and cannot be removed.");
         }
 
+        // Transfer all jobs to the current employer instead of altering their status!
+        jobService.transferJobManagement(recruiter.getId(),recruiter.getCompany().getId(), recruiter.getCompany().getEmployer());
+
         // Remove the company association and revert the user's role to CANDIDATE.
         recruiter.setCompany(null);
         recruiter.setRole(Role.CANDIDATE);
+
+        // Revoke all long-term tokens and invalidate the session instantly
+        businessRuleService.invalidateAllAuthenticationTokens(recruiter);
 
         // Return the updated user DTO
         return userMapper.toDto(recruiter);
     }
 
     @Transactional
-    @PreAuthorize("hasRole('EMPLOYER')")
-    public CompanyResponseDto changeCompanyEmployer(Long newEmployerId, CustomUserDetails principal) { // Only for their own company.
-        // Only the current employer of the company can appoint a new one.
-        User currentEmployer = userService.findActiveUserById(principal.getId());
-        Company company = principal.getCompany();
-        User newEmployer = userService.findActiveUserById(newEmployerId);
+    @PreAuthorize("hasAuthority('EMPLOYER')")
+    public CompanyResponseDto changeCompanyEmployer(User currentEmployer, User newEmployer, CustomUserDetails principal) { // Only for their own company.
 
+        Company company = principal.getCompany();
 
         if (newEmployer.getRole().equals(Role.EMPLOYER)) {
             throw new IllegalStateException("User is already an employer and cannot become an employer for another company.");
@@ -127,6 +128,9 @@ public class CompanyService {
         if (Objects.equals(newEmployer.getId(), currentEmployer.getId())) {
             throw new IllegalArgumentException("The new employer cannot be the same as the current employer.");
         }
+
+        // Transfer any jobs under the old employer's management
+        jobService.transferJobManagement(currentEmployer.getId(), currentEmployer.getCompany().getId(), newEmployer);
 
         // Update the roles and company associations
         // Demote the current employer to a candidate and appoint the new employer
@@ -136,6 +140,10 @@ public class CompanyService {
         // Set the company associations!
         currentEmployer.setCompany(null);
         newEmployer.setCompany(company);
+        company.setEmployer(newEmployer);
+
+        // Revoke all long-term tokens and invalidate the session instantly
+        businessRuleService.invalidateAllAuthenticationTokens(currentEmployer);
 
         // Return the updated company DTO. JPA dirty checking will handle the persistence of both user entities.
         return companyMapper.toDto(company);
@@ -144,24 +152,24 @@ public class CompanyService {
 
     /// DELETE
     @Transactional
+    @PreAuthorize("hasAuthority('EMPLOYER')")
     public void deleteCompany(CustomUserDetails principal) {
         // An employer can only be associated WITH ONE company they create. They can appoint MANY recruiters with their company,
-        // but each recruiter CANNOT work as a recruiter to other companies. When I delete a company, I must:
-        // A. disassociate All the related users (employers and recruiters)
-        // B. Mark the jobs they made for the company AS DELETED (soft-delete).
-        // I DON'T delete any users, I just make them a "CANDIDATE" so they can still use the normal job finding services.
+        // but each recruiter CANNOT work as a recruiter to other companies. When an employer deletes a company, I must:
+        // - Disassociate All the related users (employers and recruiters)
+        // - Mark the jobs they made for the company AS DELETED (soft-delete).
+        // - DON'T delete any users, just make them a "CANDIDATE" so they can still use the normal job finding services.
 
         Company company = principal.getCompany();
 
         for(User user : company.getRelatedUsers()) {
-            user.setCompany(null); // Remove company association
-            user.setRole(Role.CANDIDATE); // Change Role to CANDIDATE
+            user.setCompany(null);
+            user.setRole(Role.CANDIDATE);
+            businessRuleService.invalidateAllAuthenticationTokens(user); // CRITICAL to revoke access here!
         }
 
         // Soft-delete all jobs associated with the company.
-        for (Job job : company.getJobs()) {
-            job.setStatus(JobStatus.DELETED);
-        }
+        markAllCompanyJobsAsDeleted(company);
 
         //Soft delete the company itself (saving is automatically done by JPAs dirty checking)
         company.setDeleted(true);
@@ -182,7 +190,7 @@ public class CompanyService {
     }
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasRole('EMPLOYER')")
+    @PreAuthorize("hasAuthority('EMPLOYER')")
     public List<UserResponseDto> getActiveRecruitersForCompany(CustomUserDetails principal) {
 
         // Can only view the recruiters of their own company.
@@ -195,24 +203,41 @@ public class CompanyService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
-    public CompanyResponseDto getCompanyForUser(Long actorId) {
-
-        User user = userService.findActiveUserById(actorId);
-
-        // The user must be associated with a company.
-        if (user.getCompany() == null) {
-            throw new IllegalStateException("User is not associated with any company.");
-        }
-
-        return companyMapper.toDto(user.getCompany());
-    }
-
 
     /// Internal service-to-service data exchange methods (separation of concerns)
     @Transactional(readOnly = true)
     public Company findActiveCompanyById(Long companyId) {
         return companyRepository.findByIdAndDeletedFalse(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found."));
+    }
+
+
+    /// -- Helper Methods --
+    @Transactional
+    public void handleCompanySoftDeletionBecauseOfEmployerDeletion(Company company) {
+
+        for(User user : company.getRelatedUsers()) {
+            user.setCompany(null);
+            user.setRole(Role.CANDIDATE);
+            businessRuleService.invalidateAllAuthenticationTokens(user); // CRITICAL to revoke access here!
+        }
+
+        // Soft-delete all jobs associated with the company.
+        markAllCompanyJobsAsDeleted(company);
+
+        //Soft delete the company itself (saving is automatically done by JPAs dirty checking)
+        company.setDeleted(true);
+    }
+
+    @Transactional
+    public void markAllCompanyJobsAsDeleted(Company company) {
+        // Assuming JobStatus has a value like ACTIVE
+        List<Job> activeJobs = company.getJobs();
+
+        if (activeJobs.isEmpty()) {
+            return;
+        }
+
+        activeJobs.forEach(job -> job.setStatus(JobStatus.DELETED));
     }
 }

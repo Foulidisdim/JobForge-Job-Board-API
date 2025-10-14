@@ -3,8 +3,10 @@ package com.jobforge.jobboard.controller;
 import com.jobforge.jobboard.dto.ApplicationCreationDto;
 import com.jobforge.jobboard.dto.ApplicationResponseDto;
 import com.jobforge.jobboard.dto.ApplicationUpdateDto;
+import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.service.ApplicationService;
+import com.jobforge.jobboard.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,12 +22,14 @@ import java.util.List;
 public class ApplicationController {
 
     private final ApplicationService applicationService;
+    private final UserService userService;
 
     /// CREATE
     @PostMapping()
     public ResponseEntity<ApplicationResponseDto> createApplication(@Valid @RequestBody ApplicationCreationDto creationDto, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        ApplicationResponseDto applicationResponse = applicationService.apply(creationDto, principal);
+        User candidate = userService.findActiveUserById(principal.getId());
+        ApplicationResponseDto applicationResponse = applicationService.apply(creationDto, candidate);
         return ResponseEntity.status(HttpStatus.CREATED).body(applicationResponse);
     }
 
@@ -33,12 +37,12 @@ public class ApplicationController {
     /// READ
     @GetMapping("/myApplications")
     public ResponseEntity<List<ApplicationResponseDto>> getAllCandidateApplications(@AuthenticationPrincipal CustomUserDetails principal) {
-        return ResponseEntity.ok(applicationService.getApplicationsByCandidate(principal));
+        return ResponseEntity.ok(applicationService.getMyApplications(principal));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApplicationResponseDto> getApplicationById(@PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
-        return ResponseEntity.ok(applicationService.findById(id, principal));
+        return ResponseEntity.ok(applicationService.getById(id, principal));
     }
 
 

@@ -9,7 +9,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create # automatically creates tables from JPA and the @Entity classes representing my tables
+      ddl-auto: create-drop # automatically creates tables from JPA and the @Entity classes representing my tables
     show-sql: true
     properties:
       hibernate:

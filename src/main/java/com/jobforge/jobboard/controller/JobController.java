@@ -4,10 +4,12 @@ import com.jobforge.jobboard.dto.ApplicationResponseDto;
 import com.jobforge.jobboard.dto.JobCreationDto;
 import com.jobforge.jobboard.dto.JobResponseDto;
 import com.jobforge.jobboard.dto.JobUpdateDto;
+import com.jobforge.jobboard.entity.User;
 import com.jobforge.jobboard.enums.JobStatus;
 import com.jobforge.jobboard.security.CustomUserDetails;
 import com.jobforge.jobboard.service.ApplicationService;
 import com.jobforge.jobboard.service.JobService;
+import com.jobforge.jobboard.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,12 +26,14 @@ public class JobController {
 
     private final JobService jobService;
     private final ApplicationService applicationService;
+    private final UserService userService;
 
     /// CREATE
     @PostMapping()
     public ResponseEntity<JobResponseDto> createJob(@Valid @RequestBody JobCreationDto jobDto, @AuthenticationPrincipal CustomUserDetails principal) {
 
-        JobResponseDto job = jobService.createJob(jobDto, principal);
+        User creator = userService.findActiveUserById(principal.getId());
+        JobResponseDto job = jobService.createJob(jobDto, creator, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(job);
     }
 
@@ -39,7 +43,9 @@ public class JobController {
             @RequestParam JobStatus status,
             @AuthenticationPrincipal CustomUserDetails principal
     ) {
-        JobResponseDto duplicatedJob = jobService.duplicateClosedJob(id, status, principal);
+
+        User actor = userService.findActiveUserById(principal.getId());
+        JobResponseDto duplicatedJob = jobService.duplicateClosedJob(id, status, actor, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(duplicatedJob);
     }
 
