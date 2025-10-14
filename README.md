@@ -13,7 +13,7 @@ The **business-rule-driven architecture** prioritizes industry best practices, i
 This project showcases expertise in robust backend development, relational data management & integrity as well as business rule driven design, all with security in mind:
 
 ### 🛡️ Security & Authorization
-- **Token-Based Authentication (JWT):** API-wide support of secure JWT-based authentication with Refresh Token for a seamless, yet secure UX. Each request is validated through a custom `JwtAuthenticationFilter`, ensuring user identity and session integrity. Tokens are managed per user with automatic expiration, validation, and removal on sensitive events (e.g., password change, account soft-deletion/deactivation) *(Fully implemented, Testing in progress)*.
+- **Token-Based Authentication (JWT):** API-wide support of secure JWT-based authentication with Refresh Token for a seamless, yet secure UX. Each request is validated through a custom `JwtAuthenticationFilter`, ensuring user identity and session integrity. Tokens are managed per user with automatic expiration, validation, and removal on sensitive events (e.g., password change, account soft-deletion/recovery).
 - **Password hashing**: Featuring `BCrypt` for encrypted storage.
 - **Role-Based Access Control (RBAC):** Access is governed based on defined user roles (e.g., ADMIN, EMPLOYER, CANDIDATE) and business logic.
 - **Declarative Authorization:** API-wide authorization rules enforced using Spring Security's declarative `@PreAuthorize` annotations on the service layer. *(Fully implemented, Testing in progress)*
